@@ -34,7 +34,8 @@
       "@agent/*": ["src/agent/*"],
       "@sheets/*": ["src/sheets/*"],
       "@drive/*": ["src/drive/*"],
-      "@database/*": ["src/database/*"]
+      "@database/*": ["src/database/*"],
+      "@middleware/*": ["src/middleware/*"]
     }
   },
   "include": ["src/**/*"],

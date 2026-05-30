@@ -34,6 +34,7 @@ export default defineConfig({
       '@sheets': path.resolve(__dirname, './src/sheets'),
       '@drive': path.resolve(__dirname, './src/drive'),
       '@database': path.resolve(__dirname, './src/database'),
+      '@middleware': path.resolve(__dirname, './src/middleware'),
     },
   },
 });

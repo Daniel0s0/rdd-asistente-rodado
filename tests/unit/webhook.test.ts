@@ -11,6 +11,10 @@ vi.mock('@config/env', () => ({
     GOOGLE_SERVICE_ACCOUNT_KEY_BASE64: 'test-key',
     GOOGLE_API_MAX_RETRIES: 3,
     LOG_LEVEL: 'silent',
+    UI_API_KEY: 'test_api_key_min_32_chars_long_enough',
+    ALLOWED_ORIGINS: 'http://localhost:3000',
+    WEBHOOK_RATE_LIMIT: 100,
+    CHAT_RATE_LIMIT: 30,
   }),
 }));
 

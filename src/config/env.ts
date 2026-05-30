@@ -28,6 +28,11 @@ const envSchema = z.object({
   GOOGLE_API_TIMEOUT: z.coerce.number().int().positive().default(30000),
   GOOGLE_API_MAX_RETRIES: z.coerce.number().int().nonnegative().default(3),
 
+  UI_API_KEY: z.string().min(32, 'UI_API_KEY must be at least 32 characters'),
+  ALLOWED_ORIGINS: z.string().default('http://localhost:3000'),
+  WEBHOOK_RATE_LIMIT: z.coerce.number().int().positive().default(100),
+  CHAT_RATE_LIMIT: z.coerce.number().int().positive().default(30),
+
   ENABLE_AUDIT_LOGGING: z
     .enum(['true', 'false'])
     .transform((val) => val === 'true')
