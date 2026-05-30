@@ -556,6 +556,73 @@ Total: 76/76 passing (45 new + 31 pre-existing)
 
 ---
 
+## May 30, 2026 — Phase 4.5: API Security Layer ✅
+
+### Summary
+
+Phase 4.5 delivered CORS, Helmet HTTP security headers, API Key authentication, and rate limiting middleware. Backend is now production-ready for Phase 5 UI integration with proper security controls.
+
+### Decisions Made
+
+**D30: API Key Authentication (not JWT)**
+- Chose: Bearer token validation in Authorization header
+- Reason: Small internal team, no login UI needed, simpler than JWT/OAuth
+- Trade-off: Tokens are static (not expiring) — acceptable for internal use
+- Impact: UI must store API key in .env, not via login flow
+- Implementation: `src/middleware/auth.ts` validates `Authorization: Bearer <UI_API_KEY>`
+
+**D31: Webhooks Excluded from API Key Auth**
+- Chose: Keep HMAC-SHA256 validation only for webhooks (unchanged from Phase 2)
+- Reason: SaaS service already sends HMAC, adding API Key would require SaaS config change
+- Trade-off: Different auth for webhooks vs UI endpoints
+- Impact: `POST /webhook/*` endpoints don't require API Key, only rate limiting
+- Enforcement: `POST /agent/chat` requires API Key; webhooks don't
+
+**D32: Helmet + CORS Ordered Before Routes**
+- Chose: Global middleware chain: Helmet → CORS → JSON → Logger → Routes
+- Reason: Security headers must apply to all responses, CORS must apply before route handling
+- Trade-off: Can't apply Helmet/CORS per-endpoint (simplified but less flexible)
+- Impact: All endpoints get HTTP security headers (X-Frame-Options, Content-Security-Policy, etc.)
+- Verification: Response headers visible in browser DevTools
+
+### Learnings
+
+**L13: Express Middleware Order Matters**
+- What: Helmet must come before CORS, which must come before body parser
+- Why: Security headers applied only if middleware processes response; parsing body before CORS causes issues
+- Impact: Future middleware additions must respect this order: Security → Parsing → App Logic
+
+**L14: Environment Variable Mocking in Tests**
+- What: All 13 test files needed consistent env mocks (NODE_ENV, PORT, LOG_LEVEL, API keys, rate limit vars)
+- Why: Test isolation requires mocking getEnv() at module load time, not runtime
+- Impact: Added 4 new rate limit/CORS env vars, all tests auto-updated with mocks
+- Lesson: When adding env variables, update all test files' `@config/env` mocks
+
+**L15: Path Aliases Must Be Configured Twice**
+- What: Added `@middleware/*` alias to tsconfig.json AND vitest.config.ts
+- Why: TypeScript compiler uses tsconfig, test runner uses vitest.config
+- Impact: Forgetting vitest config caused "module not found" errors in tests only
+- Lesson: Check both config files when adding import aliases
+
+### Blockers (None)
+
+- All 95 tests passing ✅
+- CORS configuration validated ✅
+- API Key middleware tested ✅
+- Rate limiting exports verified ✅
+- No production concerns ✅
+
+### Phase 4.5 Complete
+
+- ✅ 2 new middleware files (auth.ts, rate-limit.ts)
+- ✅ 4 new environment variables with defaults
+- ✅ Global security headers + CORS
+- ✅ Dual-tier rate limiting (webhooks: 100/min, chat: 30/min)
+- ✅ 97 tests (95 passing, 2 skipped)
+- ✅ API ready for Phase 5 UI consumption
+
+---
+
 ## Quick Links
 
 - [TASKS.md](TASKS.md) — What phases are complete, what's next
