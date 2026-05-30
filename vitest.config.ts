@@ -9,6 +9,9 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     setupFiles: [],
+    // Run all test files in the same process to avoid native module teardown
+    // crashes with better-sqlite3 across Vitest worker boundaries.
+    pool: 'forks',
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
