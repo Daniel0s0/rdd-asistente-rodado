@@ -103,7 +103,7 @@ function validateModificacionPayload(payload: unknown): CasoModificacionPayload 
     causa_id: p.causa_id,
     rit: typeof p.rit === 'string' ? p.rit : undefined,
     tribunal: typeof p.tribunal === 'string' ? p.tribunal : undefined,
-    cambios: typeof p.cambios === 'object' ? p.cambios : undefined,
+    cambios: p.cambios !== null && typeof p.cambios === 'object' ? (p.cambios as Record<string, unknown>) : undefined,
     timestamp: typeof p.timestamp === 'string' ? p.timestamp : undefined,
   };
 }

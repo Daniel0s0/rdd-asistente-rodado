@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { getEnv } from '@config/env';
 import { getLogger } from '@utils/logger';
 
-const logger = getLogger('middleware:auth');
+const logger = getLogger();
 
 export function requireApiKey(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers['authorization'];

@@ -2,7 +2,7 @@ import rateLimit from 'express-rate-limit';
 import { getEnv } from '@config/env';
 import { getLogger } from '@utils/logger';
 
-const logger = getLogger('middleware:rate-limit');
+const logger = getLogger();
 
 export const webhookLimiter = rateLimit({
   windowMs: 60 * 1000,
