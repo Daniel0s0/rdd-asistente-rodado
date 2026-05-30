@@ -6,9 +6,9 @@ Guía maestra para trabajar en RDD. **Disciplina:** Agent Orchestration + 4 Regl
 
 ## 📊 Estado Actual
 
-**Fase:** 0 (Framework) ✅ → Próximo: [Fase 1 (Infraestructura Base)](GUIA_IMPLEMENTACION.md)  
-**Estructura existente:** src/config/, src/utils/, deployment/  
-**En construcción:** src/api/, src/agent/, src/sheets/, src/drive/ (según plan de implementación)
+**Fase:** 1 (Infraestructura Base) ✅ → Fase 2 (Webhook Listener) ✅ → Próximo: [Fase 3 (Agent + DB)](GUIA_IMPLEMENTACION.md)  
+**Completado:** src/config/, src/utils/, src/api/health, src/api/webhook, src/sheets/client, deployment/  
+**En construcción:** src/agent/, src/database/, src/drive/ (según plan de implementación)
 
 ---
 
@@ -68,28 +68,31 @@ npm run build
 
 ## Project Structure
 
-**Estado actual:** src/config/, src/utils/ + deployment/  
+**Estado actual:** Fase 1 ✅ + Fase 2 ✅  
 **Estructura completa** (se construye en fases según GUIA_IMPLEMENTACION.md):
 
 ```
 src/
-├─ api/        → Endpoints (webhook, chat, health) — Fase 2
-├─ agent/      → Claude logic + parsing — Fase 3
-├─ sheets/     → Google Sheets API wrapper — Fase 4
-├─ drive/      → Google Drive API wrapper — Fase 5
-├─ database/   → Conversation store — Fase 3
-├─ types/      → TypeScript definitions
-├─ utils/      → Utilities, validators ✅
-├─ config/     → Environment + constants ✅
-└─ index.ts    → Entry point — Fase 1
+├─ api/
+│  ├─ health.ts     → GET /health — Fase 1 ✅
+│  └─ webhook.ts    → POST /webhook/causa-nueva — Fase 2 ✅
+├─ sheets/
+│  └─ client.ts     → Google Sheets append (REGISTRO tab) — Fase 2 ✅
+├─ agent/          → Claude logic + multi-turn parsing — Fase 3 (próximo)
+├─ database/       → Conversation store (SQLite) — Fase 3 (próximo)
+├─ drive/          → Google Drive API wrapper — Fase 5
+├─ types/          → RDD domain types ✅
+├─ utils/          → Logger, validators ✅
+├─ config/         → Env validation, constants ✅
+└─ index.ts        → Express entry point ✅
 
 tests/
-├─ unit/       → Unit tests
-└─ integration/ → Integration tests
+├─ unit/           → config, webhook, agent (próximo)
+└─ integration/    → health, webhook, E2E (próximo)
 
-.claude/rules/  → Auto-loading discipline rules
-docs/           → Architecture, API, setup guides
-deployment/     → PM2 config ✅
+.claude/rules/     → Auto-loading discipline rules ✅
+docs/              → Architecture, API, setup guides
+deployment/        → PM2 config ✅
 ```
 
 ---
@@ -141,4 +144,4 @@ git diff             # Cada línea = user request
 
 ---
 
-**Última actualización:** 2026-05-29 | **Versión:** 1.1 | **Estado:** Fase 0 → Fase 1
+**Última actualización:** 2026-05-29 | **Versión:** 1.2 | **Estado:** Fase 1 ✅ + Fase 2 ✅
