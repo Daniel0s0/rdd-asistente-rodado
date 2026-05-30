@@ -169,6 +169,102 @@ This file captures major decisions, learnings, and blockers as we build RDD. Upd
 
 ---
 
+## May 30, 2026 — Phase 3a: Database Layer & Schema Design (COMPLETE ✅)
+
+### What Was Built
+
+SQLite schema for conversation persistence across RDD's multi-turn agent workflow:
+- **3-table design:** conversations (one per case), messages (per turn), audit_log (immutable trail)
+- **Atomic transactions:** Message + audit log write together; rollback on failure
+- **Audit logging:** Every data modification logged with who/when/what/why (Domain Invariant #8)
+- **Type safety:** Full TypeScript strict mode, no `any` types, boundary handling for timestamps
+- **Comprehensive testing:** 20 tests covering all 10 CRUD functions, happy paths + edge cases
+
+### Files Created
+
+| File | Purpose |
+|------|---------|
+| `src/database/schema.ts` | SQL DDL + TypeScript types |
+| `src/database/sqlite.ts` | DB client initialization (singleton) |
+| `src/database/models.ts` | 10 CRUD async functions |
+| `tests/database/models.test.ts` | Test suite (20 tests) |
+| `docs/schema-spec.md` | Complete schema specification |
+
+### Decisions Made
+
+**D12: SQLite over Postgres**
+- Chose: SQLite with better-sqlite3
+- Reason: Simpler deployment, no external service, sufficient for Phase 3 load
+- Trade-off: No horizontal scaling; switchable in Phase 5 if needed
+- Impact: Deployment requires no additional infrastructure; DB file lives alongside the app
+
+**D13: JSON metadata over normalization**
+- Chose: conversations.metadata and messages.metadata store case state as JSON
+- Reason: Avoids schema migrations as domain evolves; provides flexibility for unknown case states
+- Trade-off: No structured queries on metadata fields; acceptable for Phase 3
+- Impact: Schema stays stable; new case state fields added to metadata without migrations
+
+**D14: Audit log as append-only**
+- Chose: No updates, no deletes on audit_log table
+- Reason: Complete compliance trail for legal cases; tamper-evident history
+- Trade-off: Table grows indefinitely; requires archiving strategy in Phase 5
+- Impact: Every CRUD operation logs immutable record; admin can reconstruct all state changes
+
+**D15: Singleton pattern for DB connection**
+- Chose: `getDatabase()` caches the connection instance
+- Reason: Prevents multiple open file handles and connection exhaustion
+- Trade-off: Not thread-safe (acceptable: Node.js is single-threaded)
+- Impact: All modules import `getDatabase()` and share the same connection
+
+**D16: Transactional CRUD (message + audit atomically)**
+- Chose: Every message write includes atomic audit log entry via `db.transaction()`
+- Reason: Partial writes (message written, audit not) would break compliance trail
+- Trade-off: Slightly more complex write code
+- Impact: Either both write or neither writes; no orphaned messages without audit trail
+
+### Learnings
+
+**L8: better-sqlite3 requires vitest exclusion**
+- Learned: better-sqlite3 is a native module; Vite's ESM transform breaks it
+- Fixed: Added `server.deps.external: ['better-sqlite3']` to vitest.config.ts
+- Future: Any native Node.js module (with .node bindings) needs same vitest exclusion
+
+**L9: In-memory SQLite per test requires schema initialization**
+- Learned: `:memory:` DB starts empty; each test must call `initDatabase()` explicitly
+- Fixed: Added `beforeEach` that initializes schema and seeds test data
+- Future: Always initialize schema in test setup for SQLite-based tests
+
+**L10: TypeScript strict mode catches timestamp boundary issues**
+- Learned: SQLite stores timestamps as strings; TypeScript strict mode requires explicit parsing
+- Fixed: Added `new Date(row.created_at)` at all DB→TypeScript boundaries
+- Future: Define all timestamp fields as `Date` in interfaces; always parse at boundary
+
+### Validation Results
+
+- TypeScript: strict mode, zero `any` types, all types explicit
+- Domain Invariants: audit logging, atomicity, validation constraints
+- Behavioral Guidelines: minimal code, surgical changes, goal-driven
+- Architecture: singleton pattern, clean imports, no circular deps
+- Security: parameterized SQL, env-based config, no secrets
+- Performance: composite indexes, LIMIT on large queries, no N+1
+- Tests: 31 total (20 new + 11 pre-existing), 100% pass rate
+
+### Integration Points (Phase 3b)
+
+- **Agent module** will import `getDatabase()` and models functions
+- **Webhook handler** will create conversations on CREACION, messages on each webhook
+- **Claude SDK** will load conversation history via `getConversationHistory()`
+- **Admin dashboard** will query audit trail via `getAuditTrailForCase()`
+
+### Blockers (None)
+
+- Schema designed and implemented ✅
+- All CRUD operations tested ✅
+- TypeScript strict mode passing ✅
+- Integration points defined for Phase 3b ✅
+
+---
+
 ## Quick Links
 
 - [TASKS.md](TASKS.md) — What phases are complete, what's next
