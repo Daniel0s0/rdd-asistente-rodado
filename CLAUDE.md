@@ -6,9 +6,16 @@ Guía maestra para trabajar en RDD. **Disciplina:** Agent Orchestration + 4 Regl
 
 ## 📊 Estado Actual
 
-**Fase:** 1 (Infraestructura Base) ✅ → Fase 2 (Webhook Listener) ✅ → Próximo: [Fase 3 (Agent + DB)](GUIA_IMPLEMENTACION.md)  
+**Fase:** 1 (Infraestructura Base) ✅ → Fase 2 (Webhook Listener) ✅ → Próximo: [Fase 3 (Agent + DB)](TASKS.md)  
 **Completado:** src/config/, src/utils/, src/api/health, src/api/webhook, src/sheets/client, deployment/  
-**En construcción:** src/agent/, src/database/, src/drive/ (según plan de implementación)
+**En construcción:** src/agent/, src/database/, src/drive/ (según [TASKS.md](TASKS.md))
+
+**Harness Engineering Status:**
+- ✅ Health check script: `./scripts/init.sh`
+- ✅ Task roadmap: [TASKS.md](TASKS.md)
+- ✅ Progress log: [PROGRESS.md](PROGRESS.md)
+- ✅ Auto-loading rules: `.claude/rules/`
+- ✅ Agent Orchestration: [behavioral-guidelines.md](.claude/rules/behavioral-guidelines.md) (Rule 0)
 
 ---
 
@@ -48,6 +55,85 @@ npm run dev                # Puerto 3001 (local)
 npm run test               # OBLIGATORIO antes de push
 npm run build
 ```
+
+---
+
+## 🛠️ Harness Engineering Framework
+
+The RDD project uses a disciplined workflow to keep state visible and decisions documented. This section explains how to use the framework.
+
+### Session Entry Point
+
+**Every session starts here:**
+
+```bash
+# 1. Health check (confirms setup is working)
+./scripts/init.sh
+
+# 2. Review current state
+cat TASKS.md              # See what phases are complete, what's next
+cat PROGRESS.md           # See what decisions were made, what we learned
+cat CLAUDE.md             # Understand rules and patterns
+
+# 3. Start work
+npm run dev              # Local server (3001)
+```
+
+### The Four Framework Components
+
+| Component | Purpose | When to Use |
+|-----------|---------|------------|
+| **scripts/init.sh** | Health check for Node, .env, dependencies, tests | At every session start |
+| **TASKS.md** | Current phase status + roadmap for all 5 phases | Before starting work to see scope |
+| **PROGRESS.md** | Decisions made + learnings captured | Before Phase 3+ to understand context |
+| **behavioral-guidelines.md** (Rule 0) | How to orchestrate agents | When delegating work or planning |
+
+### How Work Flows Through The Harness
+
+```
+1. SESSION START
+   └─> ./scripts/init.sh (verify health)
+   └─> Review TASKS.md (see phase status)
+   └─> Review PROGRESS.md (see past decisions)
+
+2. CLARIFY SCOPE
+   └─> Read CLAUDE.md Section 0 (Agent Orchestration)
+   └─> If exploratory work → Dispatch Explore Agent
+   └─> If implementation → Plan with EnterPlanMode
+
+3. WORK
+   └─> This Session: Implement using findings
+   └─> Code Solution Validator: Review before push
+   └─> Commit with clear message
+
+4. DOCUMENT
+   └─> If made a decision → Add to PROGRESS.md
+   └─> If phase complete → Update TASKS.md status
+   └─> Commit changes
+
+5. HANDOFF (If using agents)
+   └─> Explore Agent output → documented in session
+   └─> Implementation plan → saved to docs/superpowers/plans/
+   └─> Validation → Code Solution Validator
+   └─> Next session → can see all context
+```
+
+### When to Update Framework Files
+
+**Update TASKS.md:**
+- When you complete a phase
+- When you discover phase scope is larger than expected
+- When blockers emerge that delay next phase
+
+**Update PROGRESS.md:**
+- After every significant decision
+- After you hit a problem and learn something
+- After completing a phase (summarize learnings)
+
+**Run init.sh:**
+- At the start of every work session
+- If you've pulled new changes
+- If you change .env or dependencies
 
 ---
 
@@ -144,4 +230,4 @@ git diff             # Cada línea = user request
 
 ---
 
-**Última actualización:** 2026-05-29 | **Versión:** 1.2 | **Estado:** Fase 1 ✅ + Fase 2 ✅
+**Última actualización:** 2026-05-29 | **Versión:** 1.3 | **Estado:** Fase 1 ✅ + Fase 2 ✅ + Harness Engineering ✅
