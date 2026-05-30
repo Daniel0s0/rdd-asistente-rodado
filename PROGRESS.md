@@ -72,6 +72,77 @@ This file captures major decisions, learnings, and blockers as we build RDD. Upd
 
 ---
 
+## May 30, 2026 — Phase 5.2 WebSocket Streaming Debug Session
+
+### Decisions Made
+
+**D6: Use claude-sonnet-4-6 as production model**
+- Chose: Sonnet 4.6 over Opus 4.8
+- Reason: Better balance of cost, speed, and capability for RDD use case (case analysis, simple chat, financial calculations)
+- Trade-off: Opus is more capable, but overkill; Haiku is cheaper but may lack capability for complex analysis
+- Impact: All future Claude calls use Sonnet 4.6; remove temperature parameter from stream calls
+
+**D7: Environment-aware Helmet CSP for socket.io compatibility**
+- Chose: Disable CSP in development, strict in production
+- Reason: socket.io-client requires eval() which CSP blocks; disabled CSP safe in dev
+- Trade-off: Less security in dev (acceptable), but production stays secure
+- Impact: Development stack works, production remains hardened
+
+### Learnings
+
+**L6: API key sync between frontend and backend is critical**
+- Problem: ui/.env had old VITE_API_KEY="test-api-key-phase-5", backend expected new key
+- Result: All GET /cases requests failed with "Invalid API key"
+- Fix: Updated ui/.env to match backend's UI_API_KEY
+- Future: Create sync script or add to init.sh to verify key consistency
+
+**L7: Helmet CSP blocks socket.io WebSocket in strict mode**
+- Problem: socket.io-client was failing to connect silently (no error visible in UI)
+- Root cause: socket.io-client uses eval(), which CSP directive scriptSrc: ["'self'"] blocks
+- Fix: Disable CSP in development mode (NODE_ENV=development)
+- Future: Document this in api-patterns.md for any new socket-based features
+
+**L8: Deprecated Claude models return 404 from Anthropic API**
+- Problem: Both claude-3-5-sonnet-20241022 and claude-3-5-sonnet-20240620 returned 404 "model not found"
+- Root cause: Anthropic deprecated these models; they no longer exist in API
+- Fix: Changed to claude-sonnet-4-6 which is current and available
+- Future: Regularly check Anthropic docs for model availability; don't hardcode old model IDs
+
+**L9: Temperature parameter not supported by all Claude models**
+- Problem: claude-opus-4-8 rejected temperature parameter with "deprecated for this model"
+- Root cause: Different Claude models have different parameter support; need to check model docs
+- Fix: Removed temperature from messages.stream() call in chatStream()
+- Future: Create model-specific config or capability matrix
+
+**L10: Type safety in error handling prevents crashes**
+- Problem: claude-agent.ts used unsafe type casting: `const apiErr = err as AnthropicAPIError`
+- Result: When error wasn't AnthropicAPIError type, code referenced undefined properties
+- Fix: Changed to instanceof check: `const apiErr = err instanceof AnthropicAPIError ? err : null`
+- Added fallback message chain for better error recovery
+- Future: Always use instanceof or optional chaining for external API errors
+
+**L11: Database conversation records must exist before streaming**
+- Problem: WebSocket sent message but backend couldn't find conversation in DB
+- Root cause: In test environment, no conversation created by webhook (in production it would be)
+- Fix: Manually created test conversation in SQLite before testing
+- Future: Create test data setup script or fixture that runs during test setup
+
+**L12: Frontend environment files require careful management**
+- Problem: .env.local existed but had stale ANTHROPIC_API_KEY and UI_API_KEY
+- Result: Frontend couldn't authenticate to backend
+- Fix: Updated .env.local with correct Phase 4.5+ security variables
+- Future: Document .env.local structure in SETUP.md; add validation to Vite config
+
+### Blockers (None)
+
+Phase 5.2 ✅ Resolved all blockers:
+- API key mismatch → Fixed
+- CSP blocking socket.io → Fixed
+- Deprecated Claude models → Fixed
+- Type safety in error handling → Fixed
+
+---
+
 ## How to Use This File
 
 ### At Session Start:
