@@ -20,6 +20,7 @@ Cuando editas un archivo `.ts` o `.tsx`, las reglas aplicables auto-cargan autom
 | Archivo | Carga Cuando | Propósito |
 |---------|-------------|----------|
 | **behavioral-guidelines.md** | `src/**/*`, `tests/**/*` | Regla 0: Agent Orchestration + 4 Reglas: Think, Simplicity, Surgical, Goal-Driven |
+| **harness-engineering.md** | `TASKS.md`, `PROGRESS.md` | Cómo usar el framework: state management, agent orchestration, decision logging |
 | **api-patterns.md** | `src/api/**/*` | Endpoints, validación, error handling |
 | **agent-patterns.md** | `src/agent/**/*` | Claude SDK, multi-turn, parsing |
 | **sheets-drive-patterns.md** | `src/sheets/**/*`, `src/drive/**/*` | Google APIs, rate limiting, audit |
@@ -109,15 +110,20 @@ describe('Webhook', () => {
 Si no estás editando, pero quieres leer una regla:
 
 ```bash
-cat .claude/rules/api-patterns.md        # Patrones de API
-cat .claude/rules/agent-patterns.md       # Patrones de agent
+cat .claude/rules/harness-engineering.md   # Framework state & agent orchestration
+cat .claude/rules/api-patterns.md          # Patrones de API
+cat .claude/rules/agent-patterns.md         # Patrones de agent
 cat .claude/rules/sheets-drive-patterns.md # Patrones Google APIs
-cat .claude/rules/testing-strategy.md     # Estrategia tests
+cat .claude/rules/testing-strategy.md      # Estrategia tests
 ```
 
 ---
 
 ## Referencia Rápida
+
+**¿Cómo organizo el trabajo en fases? ¿Cómo documento decisiones?**  
+→ Ver `harness-engineering.md` (State Management & Agent Orchestration)  
+→ TL;DR: TASKS.md = scope, PROGRESS.md = decisions/learnings, auto-commit
 
 **¿Cuándo uso Explore Agent vs implementar directo?**  
 → Ver `behavioral-guidelines.md` (Sección 0: Agent Orchestration)  
