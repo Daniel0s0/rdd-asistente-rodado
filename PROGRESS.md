@@ -375,39 +375,80 @@ Total: 76/76 passing (45 new + 31 pre-existing)
 
 ---
 
-## May 30, 2026 — Phase 3 Complete + Phase 4 Ready
+## May 30, 2026 — Phase 3 Complete + Phase 4 Ready + Architecture Restructuring
 
 ### Phase 3 Status: ✅ COMPLETE
 
 - **Phase 3a** (SQLite): 20 tests, 100% pass
 - **Phase 3b** (Claude Agent): 45 tests (76 total), 100% pass
-- **Total Files Created**: 8 new modules + 2 specs
+- **Total Files Created**: 8 new modules + 2 specs + test-drive-connection.ts
 - **Total Tests Added**: 45 new tests
 - **Domain Invariants**: All 9 enforced (DI #1-9)
+
+### Drive Architecture Restructuring (D21 Revisited)
+
+**Original D21 (Unified folder):** RDD and SaaS share same Drive folder
+**New Architecture (Separate folders):** RDD has independent folder for audit trail separation
+
+**Decisions Made:**
+
+**D21 (REVISED): Separate Drive folders for SaaS (Contabilidad) vs RDD (Tramitación)**
+- Chose: Independent `/Rodado/` folder (daniel@rdd.cl ownership) separate from SaaS
+- Reason: Maintain clear separation between accounting (SaaS) and case procedure tracking (RDD)
+- Trade-off: Manage two separate Drive structures instead of one
+- Impact: RDD maintains complete case documentation autonomy; user controls document lifecycle
+
+**D22: WhatsApp as document delivery channel**
+- Chose: User sends PDFs via WhatsApp conversation with RDD Agent
+- Reason: User is "todo el día en whatsapp" — natural communication pattern
+- Trade-off: No automated upload mechanism; requires WhatsApp integration (Phase 5)
+- Impact: Document flow: User → WhatsApp → RDD Agent → Drive /Rodado/[Causa_ID]/
+
+**D23: Classification by SaaS webhook state + user context**
+- Chose: SaaS webhook #3 (caso-cierre) triggers Resueltos folder; user indicates in chat otherwise
+- Reason: SaaS is authoritative for case lifecycle events
+- Trade-off: RDD depends on webhook delivery for accurate state
+- Impact: Folder location: Por-Resolver/ or Resueltos/ determined by case state + document type
+
+**D24: Metadata via filename convention**
+- Chose: Embed document type + date in filename (cierre-2026-05-30.pdf, pago-2026-05-30.pdf)
+- Reason: Avoids separate metadata table; keeps data in Drive filename
+- Trade-off: Limited metadata (only what fits in filename)
+- Impact: `ls /Rodado/[Causa_ID]/` shows document history directly
+
+**D25: Three-webhook architecture for case lifecycle**
+- Chose: SaaS sends POST webhooks at creation, modification (RIT/tribunal), and closure
+- Reason: Matches actual case lifecycle; RDD reacts to state changes
+- Reason (continued): Alternative (polling) is inefficient and delayed
+- Trade-off: SaaS must implement three webhook endpoints
+- Impact: 
+  - Webhook #1 (`causa-nueva`): Create /Rodado/[Causa_ID]/
+  - Webhook #2 (`caso-modificacion`): Update SQLite conversation (RIT, tribunal)
+  - Webhook #3 (`caso-cierre`): Mark case as Resueltos
 
 ### Phase 4 Readiness
 
 **Configuration Status:**
 - ✅ `GOOGLE_SERVICE_ACCOUNT_EMAIL` — Ready
 - ✅ `GOOGLE_SERVICE_ACCOUNT_KEY_BASE64` — Ready
-- ✅ `GOOGLE_DRIVE_ROOT_FOLDER_ID` — Ready (shared with SaaS, no separation needed)
-- ✅ Service account has EDITOR permissions (verified via SaaS usage)
+- ✅ `GOOGLE_DRIVE_ROOT_FOLDER_ID` — Ready (/Rodado/ verified, test folder created)
+- ✅ Service account has EDITOR permissions (test-drive-connection.ts verified)
+- ✅ Drive folder structure: /Rodado/ with Por-Resolver/ and Resueltos/ subfolders
 
-**Scope Decision (D21):**
-- **D21: Unified Drive folder structure**
-  - Chose: Use same GOOGLE_DRIVE_ROOT_FOLDER_ID for both SaaS + RDD
-  - Reason: Centralize all case documentation in one place; SaaS already uses this folder
-  - Trade-off: None (better UX)
-  - Impact: RDD creates subfolders `/[Cliente]/[Demandado]/[CausaID]/` within existing SaaS structure
+**Phase 4 Scope (Drive Integration):**
+- 3 webhook handlers: causa-nueva, caso-modificacion, caso-cierre
+- 3 new drive modules: drive-organizer, document-manager, document-search
+- 1 agent enhancement: document-handler (receive PDF from WhatsApp)
+- 1 new RDD Sheets (separate from SaaS REGISTRO)
+- Tests: webhook integration + drive CRUD + agent attachment handling
 
-**Next Step:** Multi-agent orchestration for Phase 4 (Drive Integration)
-- Similar approach to Phase 3b (EXPLORE → DESIGN → IMPL → TEST → VALIDATOR → COMMIT)
-- Estimated scope: 2-3 new modules (drive-client, folder-manager, file-handler)
+**Architecture Diagram:** See docs/FLOW-RESTRUCTURING.md (comprehensive workflow)
 
 ### Blockers (None)
 
 - Phase 3 complete and shipped ✅
-- Drive permissions verified ✅
+- Drive configuration verified (test successful) ✅
+- Architecture documented (FLOW-RESTRUCTURING.md) ✅
 - Ready for Phase 4 implementation ✅
 
 ---

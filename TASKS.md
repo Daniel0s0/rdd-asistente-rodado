@@ -1,8 +1,8 @@
 # RDD Implementation Roadmap
 
-**Status:** Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ | Phase 4 (🚧 In Planning)
+**Status:** Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ | Phase 4 (🚧 Ready for Implementation)
 
-Last updated: 2026-05-29
+Last updated: 2026-05-30
 
 ---
 
@@ -104,21 +104,53 @@ Last updated: 2026-05-29
 
 ---
 
-## Phase 4: Drive Integration (⏳ Pending)
+## Phase 4: Drive Integration (🚧 Ready for Implementation)
 
-**Scope:**
-- Google Drive API wrapper
-- Create folder structure: `/[Cliente]/[DEMANDADO]/`
-- Upload comprobantes, contratos, acuerdos
-- Link Drive files to conversation
+**Architecture:** See [docs/FLOW-RESTRUCTURING.md](docs/FLOW-RESTRUCTURING.md) for complete flow diagram
 
-**Key decisions (TBD):**
-- How do we auto-create folder structure?
-- Who can upload files? (RDD agent only or users?)
-- How do we prevent name collisions?
+**What needs to be built:**
 
-**Blockers:**
-- Depends on Phase 3 (need agent to know what to upload)
+### Webhook Handlers (3 total)
+- `src/api/webhook.ts` — Update to handle 3 webhook events:
+  1. `POST /webhook/causa-nueva` — Create /Rodado/[Causa_ID]/ with subfolders
+  2. `POST /webhook/caso-modificacion` — Update SQLite (RIT, tribunal, cambios)
+  3. `POST /webhook/caso-cierre` — Change status to Resueltos in SQLite + Sheets
+
+### Drive Modules (3 modules)
+- `src/drive/drive-organizer.ts` — Folder CRUD: create, delete, list by cause
+- `src/drive/document-manager.ts` — Upload PDFs to correct folder (Por-Resolver or Resueltos)
+- `src/drive/document-search.ts` — Find documents by causa_id, tipo, etapa
+
+### Agent Enhancement
+- `src/agent/document-handler.ts` — Process PDF attachments from WhatsApp
+  - Detect document type (cierre, pago, otro)
+  - Save with metadata filename (cierre-2026-05-30.pdf)
+  - Confirm with user before saving
+
+### Data Layer
+- New Google Sheet (RDD REGISTRO) — Separate from SaaS Sheets
+  - Columns: Causa_ID, Demandado, Etapa_Actual, Documentos_En_RDD, Fecha_Actualización
+  - Append-only for audit trail (same pattern as Phase 2)
+  - Updated when documents arrive or status changes
+
+**Key decisions (Resolved):**
+- **D22:** WhatsApp for document delivery (not email/upload)
+- **D23:** SaaS webhook #3 determines Resueltos status
+- **D24:** Metadata via filename (type-date.pdf)
+- **D25:** 3-webhook architecture for lifecycle events
+- See PROGRESS.md for full decision details
+
+**Tests needed:**
+- Webhook integration: 3 handlers + state transitions
+- Drive operations: create folder, upload file, search
+- Agent attachment handling: receive PDF, classify, save
+- RDD Sheets: append-only, audit trail
+
+**Not in Phase 4 scope (Phase 5+):**
+- WhatsApp SDK integration (Phase 5)
+- Admin dashboard / UI (Phase 5)
+- Notification system (Phase 6)
+- Cloud deployment (Phase 6)
 
 ---
 
