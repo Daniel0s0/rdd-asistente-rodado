@@ -109,42 +109,63 @@ This file captures major decisions, learnings, and blockers as we build RDD. Upd
 
 ---
 
-## Example: Phase 3 Planning
-
-When Phase 3 starts, add a new date section:
-
-```markdown
-## May 30, 2026 — Phase 3 Planning
+## May 29, 2026 — Phase 3 Architecture: Webhook Contract & RDD Integration
 
 ### Decisions Made
 
-**D6: SQLite for conversation store**
-- Chose: SQLite (lightweight, file-based, no server)
-- Reason: RDD is simple, don't need Postgres complexity yet
-- Trade-off: Harder to scale horizontally later
-- Impact: Conversation schema will be simple 2-3 table design
+**D6: Three-Webhook Architecture (CREACIÓN, CIERRE, ACTUALIZACIÓN)**
+- Chose: Three distinct webhooks fired from SaaS at different lifecycle points
+- Reason: Matches actual case lifecycle: creation → work → closure → updates during work
+- Trade-off: SaaS must implement three webhook endpoints instead of one
+- Impact: RDD can track complete case journey without polling; each event triggers specific RDD action
 
-**D7: Conversation context loaded at start, not streamed**
-- Chose: Load full history when user starts chatting
-- Reason: Claude multi-turn works better with full context
-- Trade-off: Memory usage grows with conversation length
-- Impact: May need pagination/archiving for old conversations
+**D7: RDD as Conversational Assistant (Not Auto-Agent)**
+- Chose: User initiates chat; RDD prepares/reviews/authorizes before any external action
+- Reason: Control over sensitive case data; admin must approve all client notifications
+- Trade-off: No fully automatic notifications; requires admin review
+- Impact: RDD is admin tool, not public chatbot; access restricted to admin + authorized staff
+
+**D8: Demandado Info Split Between SaaS and User**
+- Chose: SaaS provides (nombre, rut); User provides (abogado nombre, abogado email) in chat
+- Reason: At case creation, don't know demandado's lawyer; many cases have no opposing counsel (cobranza)
+- Trade-off: Abogado info only available after user provides it
+- Impact: REGISTRO incomplete until user registers closure; not all cases have abogado field
+
+**D9: Single Row per Case in REGISTRO (Not Per-Event)**
+- Chose: Same REGISTRO row updated when case moves etapa (litigacion → cobranza)
+- Reason: Same causa, same row; only tribunal/RIT changes as case progresses
+- Trade-off: Row gets complex with multiple tribunal/RIT history (handled via historial_estados audit in SaaS)
+- Impact: REGISTRO row lifecycle: created on CREACIÓN webhook, updated throughout, filled at CIERRE
+
+**D10: Notification Pattern: Prepare → Review → Authorize**
+- Chose: RDD drafts notification (email/SMS), admin reviews, admin clicks "Send"
+- Reason: Notifications are critical (payment notices, case updates); admin must verify before sending
+- Trade-off: Not fully automatic; requires admin action
+- Impact: Admin never loses touch with client communication; clear audit trail of who authorized what
+
+**D11: Access Control: Admin Only (No Public)**
+- Chose: RDD only accessible to admin + authorized users via authentication
+- Reason: Contains sensitive data (amounts, client details, case strategies, payment terms)
+- Trade-off: No public/self-service access
+- Impact: Requires user auth system; audit all access; clear ownership
 
 ### Learnings
 
-**L6: Claude API expects conversation array format**
-- Learned: Messages must be [{ role, content }], not plain text
-- Future: Check Claude SDK docs before implementing agent parsing
+**L6: Case State Machine is Complex**
+- Learned: Cases can cycle (litigacion → cobranza in different tribunal with new RIT)
+- Future: historial_estados in SaaS is the source of truth for all state changes; RDD must consume it
+- Future: Some fields (tribunal, RIT) only exist after presentación; don't assume initial values
 
-### Blockers
+**L7: Domain Requires Deep Understanding**
+- Learned: Labor law cases have specific lifecycle (declarativa → cobranza); demandado has no lawyer until closure
+- Future: Phase 3 team must understand legal domain; not just a generic case tracker
+- Future: Consult user frequently to validate assumptions about case states/transitions
 
-**B1: How do we trigger RDD from webhook?**
-- Problem: Webhook creates row in Sheets, but how does RDD know to start chatting?
-- Option A: Polling (RDD checks Sheets every N seconds)
-- Option B: Webhook calls RDD directly (creates conversation)
-- Option C: Admin UI triggers RDD manually
-- Next: Clarify with team what makes sense
-```
+### Blockers (None)
+
+- Webhook contract defined ✅
+- Data flow clarified ✅
+- RDD role clarified ✅
 
 ---
 
