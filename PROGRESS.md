@@ -265,6 +265,114 @@ SQLite schema for conversation persistence across RDD's multi-turn agent workflo
 
 ---
 
+## Phase 3b: Multi-Turn Claude Agent ✅
+
+**Status:** Complete and tested (76/76 tests pass)
+**Dates:** May 30, 2026 (design through validation)
+**Files created:** 3 new modules
+**Files modified:** 4 integrations
+**Tests added:** 45 new tests
+
+### Architecture Summary
+
+Phase 3b implements the core Claude agent for RDD's multi-turn conversation flow:
+
+- **Claude Integration** (`src/agent/claude-agent.ts`): Singleton agent with 12-step orchestration
+  - Load full conversation history (DI #3)
+  - Parse user intent + validate financial data (DI #7)
+  - Call Claude API with case context
+  - Save messages with audit trail (DI #8)
+  - Detect Sheets sync opportunities (acuerdo/pago)
+
+- **Message Parsing** (`src/agent/message-parser.ts`): Intent detection + financial extraction
+  - 5 intent types: acuerdo, pago, cierre, consulta, otro
+  - Financial data: monto (dollar/$M/millones/k), cuotas, fecha (ISO/Spanish), porcentaje
+  - All validations per DI #7 (monto>0, cuotas=int, %0-100, fecha not past)
+
+- **Endpoints** (`src/api/agent.ts`): POST /agent/chat with Zod validation
+  - Input validation: { causa_id, message }
+  - Error handling: 400 (validation), 503 (temporary), 500 (fatal)
+  - All error messages in Spanish
+
+- **Webhook Integration** (modified `src/api/webhook.ts`): Conversation creation on case arrival
+  - After Sheets append: create conversation in SQLite
+  - Response includes conversation_id for immediate chat access
+
+- **Sheets Sync** (enhanced `src/sheets/client.ts`): Atomic updates with retry logic
+  - Read → merge → write pattern (DI #4)
+  - 429 rate limit retry with exponential backoff (1s → 2s → 4s)
+  - Financial data validation before write (DI #7)
+
+- **Database Access** (`src/agent/agent-db.ts`): Thin wrapper for agent-specific DB access
+  - 4 functions: loadConversationContext, saveAgentMessage, saveUserMessage, updateConversationState
+  - Encapsulates all BD access for future refactoring
+
+### Integration Flow
+
+```
+1. Webhook arrives (causa-nueva)
+   ├─ Validate signature (HMAC-SHA256, DI #1)
+   ├─ Append to Sheets REGISTRO
+   └─ Create conversation in SQLite + metadata
+
+2. User initiates chat (POST /agent/chat)
+   ├─ Validate input (Zod schema)
+   └─ Call claudeAgent.chat()
+     ├─ Load full history (DI #3)
+     ├─ Parse intent → save user message + audit
+     ├─ Call Claude API with system prompt
+     ├─ Parse response → validate financial data (DI #7)
+     ├─ Save assistant message + audit (DI #8)
+     ├─ Update conversation metadata if agreement/payment
+     └─ Return response with sheetsSyncData if needed
+
+3. Client syncs to Sheets (separate endpoint)
+   └─ updateRegistroRow() with atomic read→merge→write
+      ├─ Retry on 429/5xx with exponential backoff
+      └─ Financial data pre-validated
+```
+
+### Decisions (D15-D20)
+
+- **D15:** SQLite BD already suffices for multi-turn storage (no horizontal scaling yet)
+- **D16:** Inline DB access in claude-agent.ts (simpler than agent-db.ts wrapper), refactored to agent-db.ts for spec compliance
+- **D17:** System prompt built at runtime with case metadata (flexible, not baked)
+- **D18:** Regex-based intent detection (simple, sufficient for MVP; Claude tool_use deferred to Phase 4)
+- **D19:** Message parsing handles 6 financial formats (dollar, Spanish, k/M, cuotas, ISO/Spanish date, porcentaje)
+- **D20:** Sheets update atomic at single API call level (read→merge→write); retry logic for 429/5xx per DI #9
+
+### Learnings (L11-L14)
+
+- **L11:** Webhook tests need mocking of new BD layer (`vi.mock('@database/models')`) after handler modifications
+- **L12:** Agent design benefits from stateless singleton + full context loading (vs. resuming mid-conversation)
+- **L13:** Spanish text handling (months, number formats) requires careful regex mapping
+- **L14:** Rate limit retry is essential for production (429 handling via exponential backoff, not exponential degradation)
+
+### Test Coverage
+
+- **Message Parsing** (21 tests): Intent detection (7), financial extraction (8), validation (6)
+- **Agent Endpoint** (9 tests): Happy path, validation errors, API errors, response shape
+- **Agent Core** (15 tests): Full flow, persistence, error handling, history loading
+
+Total: 76/76 passing (45 new + 31 pre-existing)
+
+### Known Gaps (Future Work)
+
+1. **Drive Integration** (Phase 5): Organize comprobantes + automatic folder creation
+2. **Admin Dashboard** (Phase 5): RDD UI for prepare/review/authorize flow
+3. **Notification System** (Phase 6): Email/SMS notifications to participants
+4. **Claude Tool Use** (Phase 4+): Migrate from regex parsing to structured tool_use for financial extraction
+
+### Compliance
+
+- ✅ All Domain Invariants enforced (DI #1-9)
+- ✅ API patterns followed (validation, error codes, logging)
+- ✅ Behavioral guidelines (Rule 0-4, simplicity, surgical changes)
+- ✅ Sheets/Drive patterns (service account, atomicity, validation)
+- ✅ Agent patterns (multi-turn context, error recovery)
+
+---
+
 ## Quick Links
 
 - [TASKS.md](TASKS.md) — What phases are complete, what's next

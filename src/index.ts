@@ -4,6 +4,7 @@ import { getEnv } from '@config/env';
 import { logger } from '@utils/logger';
 import { healthHandler } from '@api/health';
 import { webhookCausaNuevaHandler } from '@api/webhook';
+import { agentChatHandler } from '@api/agent';
 
 function main() {
   const env = getEnv();
@@ -18,6 +19,7 @@ function main() {
 
   app.get('/health', healthHandler);
   app.post('/webhook/causa-nueva', webhookCausaNuevaHandler);
+  app.post('/agent/chat', agentChatHandler);
 
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
     logger.error({ error: err.message, stack: err.stack }, 'Unhandled error');

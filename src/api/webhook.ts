@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { getEnv } from '@config/env';
 import { logger } from '@utils/logger';
 import { appendRegistroRow } from '@sheets/client';
+import { createConversation } from '@database/models';
 import { CausaWebhookPayload, RegistroRow } from '@domain/rdd';
 
 class ValidationError extends Error {
@@ -97,14 +98,28 @@ export async function webhookCausaNuevaHandler(
 
     const sheetsRowId = await appendRegistroRow(registroRow);
 
+    // Crear conversación en base de datos para habilitar multi-turn chat
+    logger.debug({ causaId: causa.causa_id }, 'Creating conversation');
+    const conversation = await createConversation(causa.causa_id, {
+      demandado: causa.demandado,
+      tribunal: causa.tribunal,
+      rit: causa.rit,
+      etapa: 'litigacion',
+    });
+
     logger.info(
-      { causaId: causa.causa_id, sheetsRowId, action: 'causa_registrada' },
-      'Webhook processed successfully'
+      {
+        causaId: causa.causa_id,
+        conversationId: conversation.id,
+        sheetsRowId,
+      },
+      'Webhook processed: causa and conversation created'
     );
 
     res.status(201).json({
       success: true,
       causa_id: causa.causa_id,
+      conversation_id: conversation.id,
       sheets_row_id: sheetsRowId,
       message: 'Causa registrada. ¿Cuál es el resultado del juicio?',
     });

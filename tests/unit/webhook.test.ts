@@ -6,6 +6,16 @@ vi.mock('@sheets/client', () => ({
   appendRegistroRow: vi.fn(async () => 'A42'),
 }));
 
+vi.mock('@database/models', () => ({
+  createConversation: vi.fn().mockResolvedValue({
+    id: 'mock-conversation-uuid-unit-test',
+    causa_id: 'test-causa-id',
+    created_at: new Date(),
+    closed_at: null,
+    metadata: {},
+  }),
+}));
+
 const TEST_SECRET = 'test_webhook_secret';
 
 describe('webhookCausaNuevaHandler', () => {
