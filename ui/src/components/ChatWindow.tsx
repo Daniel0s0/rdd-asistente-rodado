@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { sendMessage } from '../services/api';
-import type { AgentChatResponse } from '../services/api';
+import { getSocket, connectSocket, disconnectSocket } from '../services/socket';
+import { API_KEY } from '../services/api';
 
 interface Message {
   id: string;
@@ -19,6 +19,8 @@ export default function ChatWindow({ causaId, onBack }: ChatWindowProps) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [streamingContent, setStreamingContent] = useState('');
+  const [isStreaming, setIsStreaming] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -29,7 +31,51 @@ export default function ChatWindow({ causaId, onBack }: ChatWindowProps) {
     scrollToBottom();
   }, [messages]);
 
-  const handleSendMessage = async (e: React.FormEvent) => {
+  useEffect(() => {
+    const sock = getSocket();
+    connectSocket();
+    sock.emit('join_case', { causaId, apiKey: API_KEY });
+
+    sock.on('joined', (_p) => {
+      // room confirmed
+    });
+
+    sock.on('message_token', ({ token }) => {
+      setStreamingContent((prev) => prev + token);
+      setIsStreaming(true);
+    });
+
+    sock.on('message_complete', (payload) => {
+      setIsStreaming(false);
+      setStreamingContent('');
+      const assistantMessage: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: payload.assistantMessage,
+        timestamp: payload.timestamp,
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+      setLoading(false);
+    });
+
+    sock.on('error', (payload) => {
+      setError(`Error: ${payload.message}`);
+      setLoading(false);
+      setIsStreaming(false);
+      setStreamingContent('');
+    });
+
+    return () => {
+      sock.emit('leave_case', { causaId });
+      sock.off('joined');
+      sock.off('message_token');
+      sock.off('message_complete');
+      sock.off('error');
+      disconnectSocket();
+    };
+  }, [causaId]);
+
+  const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!input.trim() || loading) return;
@@ -46,27 +92,7 @@ export default function ChatWindow({ causaId, onBack }: ChatWindowProps) {
     setError('');
     setLoading(true);
 
-    try {
-      const response: AgentChatResponse = await sendMessage(causaId, userMessage.content);
-
-      if (!response.success || !response.data) {
-        throw new Error(response.error || 'Error al procesar la solicitud');
-      }
-
-      const assistantMessage: Message = {
-        id: response.data.messageId,
-        role: 'assistant',
-        content: response.data.assistantMessage,
-        timestamp: response.timestamp,
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Error desconocido';
-      setError(`Error: ${errorMsg}`);
-    } finally {
-      setLoading(false);
-    }
+    getSocket().emit('send_message', { causaId, message: userMessage.content });
   };
 
   return (
@@ -117,7 +143,16 @@ export default function ChatWindow({ causaId, onBack }: ChatWindowProps) {
           </div>
         ))}
 
-        {loading && (
+        {isStreaming && (
+          <div className="flex justify-start">
+            <div className="bg-white border border-gray-200 px-4 py-2 rounded-lg rounded-bl-none max-w-xs lg:max-w-md">
+              <p className="break-words">{streamingContent}</p>
+              <span className="inline-block w-1 h-4 bg-gray-400 animate-pulse ml-1" />
+            </div>
+          </div>
+        )}
+
+        {loading && !isStreaming && (
           <div className="flex justify-start">
             <div className="bg-white border border-gray-200 px-4 py-2 rounded-lg rounded-bl-none">
               <div className="flex space-x-2">

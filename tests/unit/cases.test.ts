@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Request, Response } from 'express';
 
-const mockListConversations = vi.fn();
-
 vi.mock('@config/env', () => ({
   getEnv: () => ({
     NODE_ENV: 'test',
@@ -32,10 +30,13 @@ vi.mock('@config/env', () => ({
 }));
 
 vi.mock('@database/models', () => ({
-  listConversations: mockListConversations,
+  listConversations: vi.fn(),
 }));
 
 import { casesHandler } from '@api/cases';
+import * as models from '@database/models';
+
+const mockListConversations = vi.mocked(models.listConversations);
 
 describe('GET /cases handler', () => {
   function createRequest(query?: Record<string, string>): Partial<Request> {

@@ -1,7 +1,9 @@
 import './config/env-loader';
+import http from 'http';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import { Server as SocketIOServer } from 'socket.io';
 import { getEnv } from '@config/env';
 import { logger } from '@utils/logger';
 import { healthHandler } from '@api/health';
@@ -12,8 +14,10 @@ import {
 } from '@api/webhook';
 import { agentChatHandler } from '@api/agent';
 import { casesHandler } from '@api/cases';
+import { registerSocketHandlers } from '@api/socket-handler';
 import { requireApiKey } from '@middleware/auth';
 import { webhookLimiter, chatLimiter } from '@middleware/rate-limit';
+import type { ClientToServerEvents, ServerToClientEvents } from '@domain/agent';
 
 function main() {
   const env = getEnv();
@@ -50,7 +54,18 @@ function main() {
     });
   });
 
-  app.listen(env.PORT, () => {
+  const httpServer = http.createServer(app);
+
+  const io = new SocketIOServer<ClientToServerEvents, ServerToClientEvents>(httpServer, {
+    cors: {
+      origin: env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()),
+      methods: ['GET', 'POST'],
+    },
+  });
+
+  registerSocketHandlers(io);
+
+  httpServer.listen(env.PORT, () => {
     logger.info(
       { port: env.PORT, environment: env.NODE_ENV },
       'RDD server started'

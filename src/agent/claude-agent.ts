@@ -298,6 +298,218 @@ export class ClaudeAgent {
     };
   }
 
+  /**
+   * Stream-based conversation orchestrator (Phase 5.2).
+   *
+   * Same flow as chat() (steps 1-6, 8-12) but diverges at step 7:
+   * Uses messages.stream() instead of messages.create() to emit tokens in real-time.
+   *
+   * @param causaId     - Legal case identifier (must be non-empty).
+   * @param userMessage - Text from the user (must be non-empty).
+   * @param onToken     - Callback invoked for each token from Claude.
+   * @returns Structured AgentResponse with Sheets sync data when relevant.
+   */
+  async chatStream(
+    causaId: string,
+    userMessage: string,
+    onToken: (token: string) => void
+  ): Promise<AgentResponse> {
+    const env = getEnv();
+
+    // ── 1. Validate input ────────────────────────────────────────────────────
+    if (!causaId || causaId.trim() === '') {
+      throw new ValidationError('causa_id is required and must not be empty');
+    }
+    if (!userMessage || userMessage.trim() === '') {
+      throw new ValidationError('userMessage is required and must not be empty');
+    }
+
+    logger.info({ causaId }, 'ClaudeAgent.chatStream: starting');
+
+    // ── 2. Load conversation ─────────────────────────────────────────────────
+    const conversation = await getConversationByCausaId(causaId);
+    if (!conversation) {
+      throw new ValidationError(`No conversation found for causa_id "${causaId}"`);
+    }
+
+    // ── 3. Load full message history (DI #3) ─────────────────────────────────
+    const recentMessages = await getRecentMessages(
+      conversation.id,
+      env.CLAUDE_MAX_CONTEXT_TURNS
+    );
+
+    logger.debug(
+      { conversationId: conversation.id, historyCount: recentMessages.length },
+      'ClaudeAgent.chatStream: history loaded'
+    );
+
+    // ── 4. Parse user intent ─────────────────────────────────────────────────
+    const userIntent: Intent = parseUserIntent(userMessage);
+    logger.debug({ userIntent }, 'ClaudeAgent.chatStream: intent parsed');
+
+    // ── 5. Save user message (atomic + audit) ────────────────────────────────
+    const userDbMessage = await createMessage(
+      conversation.id,
+      'user',
+      userMessage,
+      { intent: userIntent }
+    );
+
+    // ── 6. Build messages array for Claude ───────────────────────────────────
+    const claudeMessages: Array<{ role: 'user' | 'assistant'; content: string }> =
+      recentMessages.map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      }));
+
+    claudeMessages.push({ role: 'user', content: userMessage });
+
+    // ── 7. Call Claude SDK with streaming ───────────────────────────────────
+    const systemPrompt = this.buildSystemPrompt(conversation.metadata);
+
+    let assistantContent = '';
+    let finalMessage: Awaited<ReturnType<typeof this.client.messages.create>>;
+
+    try {
+      const stream = this.client.messages.stream({
+        model: env.CLAUDE_MODEL,
+        system: systemPrompt,
+        messages: claudeMessages,
+        max_tokens: 2048,
+        temperature: env.CLAUDE_TEMPERATURE,
+      });
+
+      for await (const event of stream) {
+        if (
+          event.type === 'content_block_delta' &&
+          event.delta.type === 'text_delta'
+        ) {
+          assistantContent += event.delta.text;
+          onToken(event.delta.text);
+        }
+      }
+
+      finalMessage = await stream.finalMessage();
+    } catch (err) {
+      const apiErr = err as AnthropicAPIError;
+      const status = apiErr.status;
+      logger.error(
+        { causaId, status, error: apiErr.message },
+        'ClaudeAgent.chatStream: Claude API error'
+      );
+
+      if (status === 429 || (status !== undefined && status >= 500)) {
+        throw new TemporaryError(
+          `Claude API temporary error (status ${status}): ${apiErr.message}`
+        );
+      }
+      if (status === 401 || status === 403) {
+        throw new ClaudeAPIError(
+          `Claude API auth error (status ${status}): ${apiErr.message}`
+        );
+      }
+      if (status === 400) {
+        throw new ValidationError(`Claude API bad request (status 400): ${apiErr.message}`);
+      }
+      throw err;
+    }
+
+    // ── 8. Parse assistant response ──────────────────────────────────────────
+    const { intent: parsedIntent, data: financialData } = this.parseAssistantResponse(
+      assistantContent,
+      userIntent
+    );
+
+    const responseType = this.determineResponseType(assistantContent);
+    const flags = this.extractFlags(assistantContent);
+
+    // ── 9. Validate financial data (DI #7) ───────────────────────────────────
+    if (financialData && Object.keys(financialData).length > 0) {
+      try {
+        validateFinancialData(financialData);
+      } catch (validationErr) {
+        if (validationErr instanceof ParserValidationError) {
+          throw new ValidationError(validationErr.message);
+        }
+        throw validationErr;
+      }
+    }
+
+    // ── 10. Save assistant message (atomic + audit) ───────────────────────────
+    const tokensUsed = {
+      input: finalMessage.usage.input_tokens,
+      output: finalMessage.usage.output_tokens,
+    };
+
+    const assistantDbMessage = await createMessage(
+      conversation.id,
+      'assistant',
+      assistantContent,
+      {
+        response_type: responseType,
+        processing_ok: true,
+        flags,
+        model: finalMessage.model,
+        tokens_used: tokensUsed,
+      }
+    );
+
+    // ── 11. Update conversation metadata if agreement/payment ─────────────────
+    const shouldSyncSheets = parsedIntent === 'acuerdo' || parsedIntent === 'pago';
+
+    if (shouldSyncSheets && financialData) {
+      const metadataUpdates: Partial<ConversationMetadata> = {};
+
+      if (financialData.monto !== undefined) {
+        metadataUpdates.acuerdo_monto = financialData.monto;
+      }
+      if (financialData.cuotas !== undefined) {
+        metadataUpdates.acuerdo_cuotas = financialData.cuotas;
+      }
+
+      if (Object.keys(metadataUpdates).length > 0) {
+        await updateConversationMetadata(conversation.id, metadataUpdates);
+        logger.debug(
+          { conversationId: conversation.id, updates: metadataUpdates },
+          'ClaudeAgent.chatStream: conversation metadata updated'
+        );
+      }
+    }
+
+    // ── 12. Build Sheets sync data if needed ──────────────────────────────────
+    const sheetsSyncData: SheetsSyncData | undefined =
+      shouldSyncSheets && financialData
+        ? this.buildSheetsSyncData(parsedIntent, financialData)
+        : undefined;
+
+    logger.info(
+      {
+        causaId,
+        conversationId: conversation.id,
+        userMessageId: userDbMessage.id,
+        assistantMessageId: assistantDbMessage.id,
+        intent: parsedIntent,
+        shouldSyncSheets,
+      },
+      'ClaudeAgent.chatStream: complete'
+    );
+
+    // ── Return AgentResponse ──────────────────────────────────────────────────
+    return {
+      conversationId: conversation.id,
+      messageId: assistantDbMessage.id,
+      assistantMessage: assistantContent,
+      intent: parsedIntent,
+      extractedData:
+        financialData && Object.keys(financialData).length > 0
+          ? financialData
+          : undefined,
+      flags,
+      shouldSyncSheets,
+      sheetsSyncData,
+    };
+  }
+
   // ───────────────────────────────────────────────────────────────────────────
   // Private helpers
   // ───────────────────────────────────────────────────────────────────────────
