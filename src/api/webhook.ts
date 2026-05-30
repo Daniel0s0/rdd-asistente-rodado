@@ -159,6 +159,8 @@ export async function webhookCausaNuevaHandler(
     // Crear conversación en base de datos para habilitar multi-turn chat
     logger.debug({ causaId: causa.causa_id }, 'Creating conversation');
     const conversation = await createConversation(causa.causa_id, {
+      cliente_nombre: causa.cliente_nombre,
+      cliente_rut: causa.cliente_rut,
       demandado: causa.demandado,
       tribunal: causa.tribunal,
       rit: causa.rit,

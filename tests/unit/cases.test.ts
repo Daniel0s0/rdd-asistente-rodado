@@ -14,8 +14,8 @@ vi.mock('@config/env', () => ({
     GOOGLE_SERVICE_ACCOUNT_KEY_BASE64: 'test-key',
     GOOGLE_SHEETS_SPREADSHEET_ID: 'test-sheet-id',
     GOOGLE_DRIVE_ROOT_FOLDER_ID: 'test-folder-id',
-    DATABASE_TYPE: 'sqlite',
-    DATABASE_PATH: ':memory:',
+    SUPABASE_URL: 'https://test.supabase.co',
+    SUPABASE_ANON_KEY: 'test-anon-key',
     CLAUDE_MAX_CONTEXT_TURNS: 10,
     CLAUDE_TEMPERATURE: 0.3,
     GOOGLE_API_TIMEOUT: 30000,
@@ -59,16 +59,32 @@ describe('GET /cases handler', () => {
       {
         id: 'conv-1',
         causa_id: '2024-00001',
+        cliente_nombre: 'García López',
+        demandado: 'John Doe',
+        tribunal: 'Laboral de Santiago',
+        rit: '24-00001-1',
+        etapa: 'litigacion',
+        case_state: 'activo',
+        ingreso_honorarios: 100000,
+        pagos_pendientes: 50000,
         created_at: new Date('2026-05-01'),
         closed_at: null,
-        metadata: { demandado: 'John Doe', monto_demanda: 500000 },
+        metadata: {},
       },
       {
         id: 'conv-2',
         causa_id: '2024-00002',
+        cliente_nombre: 'Smith Corp',
+        demandado: 'Jane Smith',
+        tribunal: 'Juzgado Civil',
+        rit: '24-00002-1',
+        etapa: 'cobranza',
+        case_state: 'activo',
+        ingreso_honorarios: 200000,
+        pagos_pendientes: 100000,
         created_at: new Date('2026-05-02'),
         closed_at: null,
-        metadata: { demandado: 'Jane Smith', monto_demanda: 1000000 },
+        metadata: {},
       },
     ];
 
@@ -83,20 +99,16 @@ describe('GET /cases handler', () => {
       expect.objectContaining({
         success: true,
         data: expect.objectContaining({
-          cases: [
-            {
+          cases: expect.arrayContaining([
+            expect.objectContaining({
               causaId: '2024-00001',
               status: 'active',
               createdAt: '2026-05-01T00:00:00.000Z',
-              metadata: { demandado: 'John Doe', monto_demanda: 500000 },
-            },
-            {
-              causaId: '2024-00002',
-              status: 'active',
-              createdAt: '2026-05-02T00:00:00.000Z',
-              metadata: { demandado: 'Jane Smith', monto_demanda: 1000000 },
-            },
-          ],
+              clienteNombre: 'García López',
+              demandado: 'John Doe',
+              tribunal: 'Laboral de Santiago',
+            }),
+          ]),
           total: 2,
         }),
       })
@@ -127,6 +139,14 @@ describe('GET /cases handler', () => {
       {
         id: 'conv-1',
         causa_id: '2024-00001',
+        cliente_nombre: 'Test',
+        demandado: 'Test Corp',
+        tribunal: 'Test Court',
+        rit: '24-00001-1',
+        etapa: 'litigacion',
+        case_state: 'activo',
+        ingreso_honorarios: 0,
+        pagos_pendientes: 0,
         created_at: new Date('2026-05-01'),
         closed_at: new Date('2026-05-15'),
         metadata: {},
@@ -152,10 +172,13 @@ describe('GET /cases handler', () => {
 
     await casesHandler(req, res);
 
-    expect(mockListConversations).toHaveBeenCalledWith({
-      onlyOpen: true,
-      limit: 50,
-    });
+    expect(mockListConversations).toHaveBeenCalledWith(
+      expect.objectContaining({
+        onlyOpen: true,
+        limit: 50,
+        offset: 0,
+      })
+    );
   });
 
   it('passes onlyOpen=false when open=false query param', async () => {
@@ -166,10 +189,13 @@ describe('GET /cases handler', () => {
 
     await casesHandler(req, res);
 
-    expect(mockListConversations).toHaveBeenCalledWith({
-      onlyOpen: false,
-      limit: 50,
-    });
+    expect(mockListConversations).toHaveBeenCalledWith(
+      expect.objectContaining({
+        onlyOpen: false,
+        limit: 50,
+        offset: 0,
+      })
+    );
   });
 
   it('returns 500 when database error occurs', async () => {

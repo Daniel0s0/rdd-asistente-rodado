@@ -19,7 +19,7 @@ import {
   createMessage,
   updateConversationMetadata,
 } from '@database/models';
-import { ConversationMetadata } from '@database/schema';
+import { Conversation } from '@database/schema';
 import { AgentResponse, SheetsSyncData } from '@domain/agent';
 import {
   parseUserIntent,
@@ -171,7 +171,7 @@ export class ClaudeAgent {
     claudeMessages.push({ role: 'user', content: userMessage });
 
     // ── 7. Call Claude SDK ───────────────────────────────────────────────────
-    const systemPrompt = this.buildSystemPrompt(conversation.metadata);
+    const systemPrompt = this.buildSystemPrompt(conversation);
 
     let claudeResponse: Awaited<ReturnType<typeof this.client.messages.create>>;
     try {
@@ -244,24 +244,24 @@ export class ClaudeAgent {
       }
     );
 
-    // ── 11. Update conversation metadata if agreement/payment ─────────────────
+    // ── 11. Update conversation state if agreement/payment ─────────────────
     const shouldSyncSheets = parsedIntent === 'acuerdo' || parsedIntent === 'pago';
 
     if (shouldSyncSheets && financialData) {
-      const metadataUpdates: Partial<ConversationMetadata> = {};
+      const updates: Partial<Conversation> = {};
 
       if (financialData.monto !== undefined) {
-        metadataUpdates.acuerdo_monto = financialData.monto;
+        updates.acuerdo_monto = financialData.monto;
       }
       if (financialData.cuotas !== undefined) {
-        metadataUpdates.acuerdo_cuotas = financialData.cuotas;
+        updates.acuerdo_cuotas = financialData.cuotas;
       }
 
-      if (Object.keys(metadataUpdates).length > 0) {
-        await updateConversationMetadata(conversation.id, metadataUpdates);
+      if (Object.keys(updates).length > 0) {
+        await updateConversationMetadata(conversation.id, updates);
         logger.debug(
-          { conversationId: conversation.id, updates: metadataUpdates },
-          'ClaudeAgent.chat: conversation metadata updated'
+          { conversationId: conversation.id, updates },
+          'ClaudeAgent.chat: conversation updated'
         );
       }
     }
@@ -365,7 +365,7 @@ export class ClaudeAgent {
     claudeMessages.push({ role: 'user', content: userMessage });
 
     // ── 7. Call Claude SDK with streaming ───────────────────────────────────
-    const systemPrompt = this.buildSystemPrompt(conversation.metadata);
+    const systemPrompt = this.buildSystemPrompt(conversation);
 
     let assistantContent = '';
     let finalMessage: Awaited<ReturnType<typeof this.client.messages.create>>;
@@ -455,24 +455,24 @@ export class ClaudeAgent {
       }
     );
 
-    // ── 11. Update conversation metadata if agreement/payment ─────────────────
+    // ── 11. Update conversation state if agreement/payment ─────────────────
     const shouldSyncSheets = parsedIntent === 'acuerdo' || parsedIntent === 'pago';
 
     if (shouldSyncSheets && financialData) {
-      const metadataUpdates: Partial<ConversationMetadata> = {};
+      const updates: Partial<Conversation> = {};
 
       if (financialData.monto !== undefined) {
-        metadataUpdates.acuerdo_monto = financialData.monto;
+        updates.acuerdo_monto = financialData.monto;
       }
       if (financialData.cuotas !== undefined) {
-        metadataUpdates.acuerdo_cuotas = financialData.cuotas;
+        updates.acuerdo_cuotas = financialData.cuotas;
       }
 
-      if (Object.keys(metadataUpdates).length > 0) {
-        await updateConversationMetadata(conversation.id, metadataUpdates);
+      if (Object.keys(updates).length > 0) {
+        await updateConversationMetadata(conversation.id, updates);
         logger.debug(
-          { conversationId: conversation.id, updates: metadataUpdates },
-          'ClaudeAgent.chatStream: conversation metadata updated'
+          { conversationId: conversation.id, updates },
+          'ClaudeAgent.chatStream: conversation updated'
         );
       }
     }
@@ -516,17 +516,17 @@ export class ClaudeAgent {
   // ───────────────────────────────────────────────────────────────────────────
 
   /**
-   * Build the system prompt for Claude using case metadata.
+   * Build the system prompt for Claude using case information.
    * Includes demandado, monto_demanda, tribunal, and rit when available.
    */
-  private buildSystemPrompt(metadata: ConversationMetadata): string {
-    const demandado = metadata.demandado ?? '(no especificado)';
-    const montoDemanda = metadata.monto_demanda != null
-      ? `$${metadata.monto_demanda.toLocaleString('es-CL')}`
+  private buildSystemPrompt(conversation: Conversation): string {
+    const demandado = conversation.demandado ?? '(no especificado)';
+    const montoDemanda = conversation.monto_demanda != null
+      ? `$${conversation.monto_demanda.toLocaleString('es-CL')}`
       : '(no especificado)';
-    const tribunal = metadata.tribunal ?? '(no especificado)';
-    const rit = metadata.rit ?? '(no especificado)';
-    const etapa = metadata.etapa ?? '(no especificada)';
+    const tribunal = conversation.tribunal ?? '(no especificado)';
+    const rit = conversation.rit ?? '(no especificado)';
+    const etapa = conversation.etapa ?? '(no especificada)';
 
     return `Eres RDD (Asistente Rodado), un agente contable especializado en el registro de ingresos de causas legales para un bufete de abogados.
 

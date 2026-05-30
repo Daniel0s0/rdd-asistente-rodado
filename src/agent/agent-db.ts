@@ -19,7 +19,7 @@ import {
   createMessage,
   updateConversationMetadata,
 } from '@database/models';
-import { Conversation, Message, ConversationMetadata, MessageMetadata } from '@database/schema';
+import { Conversation, Message, MessageMetadata } from '@database/schema';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Context Loading
@@ -128,16 +128,16 @@ export async function saveUserMessage(
 /**
  * Actualiza el estado de la conversación cuando se registra un acuerdo o pago.
  *
- * Hace merge de los updates sobre la metadata existente de forma atómica,
- * registrando antes/después en el audit log.
+ * Actualiza campos de top-level (acuerdo_monto, acuerdo_cuotas, etc.)
+ * de forma atómica, registrando cambios en el audit log.
  *
  * @param conversationId - ID de la conversación a actualizar
- * @param updates        - Campos parciales de ConversationMetadata a mergear
- * @returns La conversación actualizada con la nueva metadata
+ * @param updates        - Campos parciales de Conversation a actualizar
+ * @returns La conversación actualizada
  */
 export async function updateConversationState(
   conversationId: string,
-  updates: Partial<ConversationMetadata>
+  updates: Partial<Conversation>
 ): Promise<Conversation> {
   logger.debug({ conversationId, updates }, 'Actualizando estado de conversación');
 

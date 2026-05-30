@@ -30,6 +30,7 @@
   "license": "MIT",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.23.0",
+    "@supabase/supabase-js": "^2.106.2",
     "better-sqlite3": "^12.10.0",
     "cors": "^2.8.6",
     "decimal.js": "^10.4.3",

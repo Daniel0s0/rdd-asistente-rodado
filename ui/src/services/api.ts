@@ -8,7 +8,14 @@ export interface CasesResponse {
       causaId: string;
       status: 'active' | 'closed';
       createdAt: string;
-      metadata: Record<string, unknown>;
+      clienteNombre?: string;
+      demandado?: string;
+      tribunal?: string;
+      rit?: string;
+      etapa?: string;
+      caseState?: string;
+      ingresoHonorarios?: number;
+      pagosPendientes?: number;
     }>;
     total: number;
   };
@@ -32,8 +39,8 @@ export interface AgentChatResponse {
   error?: string;
 }
 
-export async function getCases(): Promise<CasesResponse> {
-  const url = `${API_URL}/cases`;
+export async function getCases(queryString?: string): Promise<CasesResponse> {
+  const url = `${API_URL}/cases${queryString ? '?' + queryString : ''}`;
 
   try {
     const response = await fetch(url, {

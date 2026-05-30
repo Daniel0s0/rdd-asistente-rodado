@@ -119,50 +119,20 @@ export type AuditEntityType = 'conversation' | 'message';
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * ConversationMetadata — JSON shape stored in conversations.metadata.
- * Fields from webhook arrive at CREATE time; parsed fields are added later.
+ * ConversationMetadata — Additional context stored as JSONB in conversations.metadata.
+ * Business-critical fields are now top-level columns. This blob holds system metadata.
  */
 export interface ConversationMetadata {
-  /** From webhook: defendant name */
-  demandado?: string;
+  /** Internal flag: whether conversation is marked as archived */
+  is_archived?: boolean;
 
-  /** From webhook: plaintiff claim amount (in pesos) */
-  monto_demanda?: number;
-
-  /** From webhook: court name */
-  tribunal?: string;
-
-  /** From webhook: RIT number */
-  rit?: string;
-
-  /** From webhook: case stage (e.g., "litigacion", "cobranza") */
-  etapa?: string;
-
-  /** Parsed in conversation: registered settlement amount */
-  acuerdo_monto?: number;
-
-  /** Parsed in conversation: payment installment count */
-  acuerdo_cuotas?: number;
-
-  /** Parsed in conversation: lawyer handling closure */
-  abogado_nombre?: string;
-
-  /** Parsed in conversation: lawyer email */
-  abogado_email?: string;
-
-  /** System: canonical case state */
-  case_state?: 'litigacion' | 'cobranza' | 'archivado';
-
-  /** System: total number of messages in this conversation */
-  message_count?: number;
-
-  /** Drive: root folder ID created on causa-nueva */
-  drive_folder_id?: string;
+  /** Internal flag: conversion notes or internal comments */
+  internal_notes?: string;
 }
 
 /**
  * Conversation — one conversation thread per legal case (causa_id).
- * Created when webhook arrives; closed when case finalizes.
+ * Supabase PostgreSQL schema with top-level columns for business fields.
  */
 export interface Conversation {
   /** Unique conversation ID (UUID v4) */
@@ -171,10 +141,58 @@ export interface Conversation {
   /** Case reference from webhook (e.g., "2024-00123") */
   causa_id: string;
 
-  /** Case metadata from webhook and runtime state */
+  /** From webhook: client name */
+  cliente_nombre?: string;
+
+  /** From webhook: client RUT */
+  cliente_rut?: string;
+
+  /** From webhook: defendant name */
+  demandado?: string;
+
+  /** From webhook: court name */
+  tribunal?: string;
+
+  /** From webhook: RIT number */
+  rit?: string;
+
+  /** From webhook: case stage (litigacion | cobranza) */
+  etapa?: string;
+
+  /** From webhook: plaintiff claim amount (in pesos) */
+  monto_demanda?: number;
+
+  /** System: canonical case state */
+  case_state: 'activo' | 'acuerdo' | 'archivado' | 'desistido' | 'caducado';
+
+  /** System: total honorarios generated */
+  ingreso_honorarios: number;
+
+  /** System: total payments pending to client */
+  pagos_pendientes: number;
+
+  /** Parsed: settlement amount (in pesos) */
+  acuerdo_monto?: number;
+
+  /** Parsed: payment installment count */
+  acuerdo_cuotas?: number;
+
+  /** Parsed: lawyer handling */
+  abogado_nombre?: string;
+
+  /** Parsed: lawyer email */
+  abogado_email?: string;
+
+  /** Drive: root folder ID */
+  drive_folder_id?: string;
+
+  /** System: total message count */
+  message_count: number;
+
+  /** Additional context as JSONB */
   metadata: ConversationMetadata;
 
-  /** When conversation was created (webhook received) */
+  /** When conversation was created */
   created_at: Date;
 
   /** Last time conversation was modified */

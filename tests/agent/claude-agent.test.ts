@@ -25,8 +25,6 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import Database from 'better-sqlite3';
-import { FULL_SCHEMA } from '@database/schema';
 
 // ─── Mock @config/env BEFORE anything else ───────────────────────────────────
 vi.mock('@config/env', () => ({
@@ -42,8 +40,8 @@ vi.mock('@config/env', () => ({
     GOOGLE_SERVICE_ACCOUNT_KEY_BASE64: 'test-key',
     GOOGLE_SHEETS_SPREADSHEET_ID: 'test-sheet-id',
     GOOGLE_DRIVE_ROOT_FOLDER_ID: 'test-folder-id',
-    DATABASE_TYPE: 'sqlite',
-    DATABASE_PATH: ':memory:',
+    SUPABASE_URL: 'https://test.supabase.co',
+    SUPABASE_ANON_KEY: 'test-anon-key',
     CLAUDE_MAX_CONTEXT_TURNS: 10,
     CLAUDE_TEMPERATURE: 0.3,
     GOOGLE_API_TIMEOUT: 30000,
@@ -57,9 +55,10 @@ vi.mock('@config/env', () => ({
   }),
 }));
 
-// ─── Mock @database/sqlite BEFORE anything else ───────────────────────────────
-vi.mock('@database/sqlite', () => ({
-  getDatabase: vi.fn(),
+// ─── Mock @database/supabase BEFORE anything else ────────────────────────────
+vi.mock('@database/supabase', () => ({
+  getDb: vi.fn(),
+  closeDb: vi.fn(),
 }));
 
 // ─── Mock Anthropic SDK ───────────────────────────────────────────────────────
@@ -74,19 +73,38 @@ vi.mock('@anthropic-ai/sdk', () => {
 });
 
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
-import { getDatabase } from '@database/sqlite';
+import { getDb } from '@database/supabase';
 import { Anthropic } from '@anthropic-ai/sdk';
 import { createConversation, getConversationHistory } from '@database/models';
 import { ValidationError, ClaudeAPIError, TemporaryError } from '@agent/claude-agent';
+import { Conversation } from '@database/schema';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Build a fresh in-memory DB for each test. */
-function createTestDb(): Database.Database {
-  const db = new Database(':memory:');
-  db.pragma('foreign_keys = ON');
-  db.exec(FULL_SCHEMA);
-  return db;
+/** Create a mock Supabase PostgREST query chain with proper async support. */
+function createMockPostgrestQuery(returnData: any = null) {
+  // Create a self-referential query chain that returns promises
+  const createChain = (data: any) => ({
+    select: vi.fn().mockImplementation(() => createChain(data)),
+    eq: vi.fn().mockImplementation(() => createChain(data)),
+    is: vi.fn().mockImplementation(() => createChain(data)),
+    or: vi.fn().mockImplementation(() => createChain(data)),
+    gte: vi.fn().mockImplementation(() => createChain(data)),
+    lte: vi.fn().mockImplementation(() => createChain(data)),
+    in: vi.fn().mockImplementation(() => createChain(data)),
+    insert: vi.fn().mockImplementation(() => createChain(data)),
+    update: vi.fn().mockImplementation(() => createChain(data)),
+    range: vi.fn().mockImplementation(() => createChain(data)),
+    order: vi.fn().mockImplementation(() => createChain(data)),
+    limit: vi.fn().mockImplementation(() => createChain(data)),
+    single: vi.fn().mockImplementation(() => createChain(data)),
+    then: (onFulfilled: any, onRejected?: any) =>
+      Promise.resolve({ data, error: null }).then(onFulfilled, onRejected),
+    catch: (onRejected: any) =>
+      Promise.resolve({ data, error: null }).catch(onRejected),
+  });
+
+  return createChain(returnData);
 }
 
 /** Retrieve the vi.fn() used as messages.create. */
@@ -140,32 +158,63 @@ async function getAgentFresh() {
 // ─── Test Suite ───────────────────────────────────────────────────────────────
 
 describe('ClaudeAgent.chat()', () => {
-  let db: Database.Database;
+  let mockDb: any;
+  let mockQuery: any;
   let testCausaId: string;
   let mockCreate: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    // Fresh in-memory DB for each test
-    db = createTestDb();
-    vi.mocked(getDatabase).mockReturnValue(db);
+    // Setup test causa ID first
+    testCausaId = `TEST-${Date.now()}`;
+
+    // Create base mock conversation for this test
+    const mockConversation: Conversation = {
+      id: 'conv-test',
+      causa_id: testCausaId,
+      cliente_nombre: 'Test Client',
+      cliente_rut: '12.345.678-9',
+      demandado: 'Juan Rodríguez',
+      tribunal: 'Juzgado Civil de Santiago',
+      rit: '123-2024',
+      etapa: 'litigacion',
+      monto_demanda: 5000000,
+      case_state: 'activo',
+      ingreso_honorarios: 0,
+      pagos_pendientes: 0,
+      acuerdo_monto: undefined,
+      acuerdo_cuotas: undefined,
+      abogado_nombre: undefined,
+      abogado_email: undefined,
+      drive_folder_id: undefined,
+      message_count: 0,
+      metadata: {},
+      created_at: new Date(),
+      updated_at: new Date(),
+      closed_at: null,
+    };
+
+    // Mock Supabase DB with dynamic responses based on table
+    mockDb = {
+      from: vi.fn((table: string) => {
+        if (table === 'conversations') {
+          return createMockPostgrestQuery(mockConversation);
+        } else if (table === 'messages') {
+          return createMockPostgrestQuery([]);
+        } else if (table === 'audit_log') {
+          return createMockPostgrestQuery([]);
+        }
+        // Default
+        return createMockPostgrestQuery(null);
+      }),
+    };
+    vi.mocked(getDb).mockReturnValue(mockDb);
 
     // Reset the Anthropic mock
     mockCreate = getMockCreate();
     mockCreate.mockReset();
-
-    // Create a test conversation in the DB so causaId lookups succeed
-    testCausaId = `TEST-${Date.now()}`;
-    await createConversation(testCausaId, {
-      demandado: 'Juan Rodríguez',
-      monto_demanda: 5000000,
-      tribunal: 'Juzgado Civil de Santiago',
-      rit: '123-2024',
-      etapa: 'Negociación',
-    });
   });
 
   afterEach(() => {
-    db.close();
     vi.clearAllMocks();
   });
 
