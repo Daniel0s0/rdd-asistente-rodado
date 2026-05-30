@@ -1,6 +1,6 @@
 # RDD Implementation Roadmap
 
-**Status:** Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ | Phase 4 (🚧 Ready for Implementation)
+**Status:** Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ + Phase 4 ✅ | Phase 5 (⏳ Pending)
 
 Last updated: 2026-05-30
 
@@ -12,8 +12,8 @@ Last updated: 2026-05-30
 |-------|------|--------|---------|
 | 1 | Infrastructure Base | ✅ Complete | Express server, env validation, logging, health endpoint |
 | 2 | Webhook Listener | ✅ Complete | POST /webhook with HMAC validation, Google Sheets REGISTRO tab |
-| 3 | Agent + Database | 🚧 In Planning | Claude SDK multi-turn, SQLite conversation store |
-| 4 | Drive Integration | ⏳ Pending | Google Drive API wrapper, file upload/download |
+| 3 | Agent + Database | ✅ Complete | Claude SDK multi-turn, SQLite conversation store |
+| 4 | Drive Integration | ✅ Complete | Google Drive folder management, 3-webhook lifecycle handlers |
 | 5 | UI Layer | ⏳ Pending | Dashboard, conversation UI (may be external) |
 
 ---
@@ -104,53 +104,62 @@ Last updated: 2026-05-30
 
 ---
 
-## Phase 4: Drive Integration (🚧 Ready for Implementation)
+## Phase 4: Drive Integration ✅
 
 **Architecture:** See [docs/FLOW-RESTRUCTURING.md](docs/FLOW-RESTRUCTURING.md) for complete flow diagram
 
-**What needs to be built:**
+**What was built:**
 
-### Webhook Handlers (3 total)
-- `src/api/webhook.ts` — Update to handle 3 webhook events:
-  1. `POST /webhook/causa-nueva` — Create /Rodado/[Causa_ID]/ with subfolders
-  2. `POST /webhook/caso-modificacion` — Update SQLite (RIT, tribunal, cambios)
-  3. `POST /webhook/caso-cierre` — Change status to Resueltos in SQLite + Sheets
+### Core Drive Infrastructure
+- `src/utils/retry.ts` — Extracted retryWithBackoff utility (generic, reusable)
+- `src/config/constants.ts` — DRIVE_MIME_TYPES constant (FOLDER, PDF, TEXT)
+- `src/drive/client.ts` — Drive API client with folder + document operations
+  - `createCaseFolder(causaId)` → /Rodado/[Causa_ID]/ with Por-Resolver/ + Resueltos/
+  - `getFoldersByCase(causaId)` → retrieve folder hierarchy
+  - `uploadDocument(parentFolderId, filename, content, mimeType)` → upload files
+  - `listDocuments(folderId)` → list files in folder
+  - All operations wrapped in `retryWithBackoff` for resilience
 
-### Drive Modules (3 modules)
-- `src/drive/drive-organizer.ts` — Folder CRUD: create, delete, list by cause
-- `src/drive/document-manager.ts` — Upload PDFs to correct folder (Por-Resolver or Resueltos)
-- `src/drive/document-search.ts` — Find documents by causa_id, tipo, etapa
+### 3-Webhook Lifecycle Handlers
+- `POST /webhook/causa-nueva` — Creates Drive folders + registers in Sheets + creates DB conversation
+  - Calls `createCaseFolder()` before Sheets append
+  - Returns `drive_folder_id` and `driveFolderUrl` in response
+- `POST /webhook/caso-modificacion` — Updates conversation metadata (RIT, tribunal)
+  - Finds conversation by `causa_id`, updates with new metadata
+  - Returns 200 with `causa_id` on success
+- `POST /webhook/caso-cierre` — Closes conversation
+  - Finds conversation by `causa_id`, marks as closed
+  - Returns 200 with `causa_id` on success
 
-### Agent Enhancement
-- `src/agent/document-handler.ts` — Process PDF attachments from WhatsApp
-  - Detect document type (cierre, pago, otro)
-  - Save with metadata filename (cierre-2026-05-30.pdf)
-  - Confirm with user before saving
+### Database & Sheets Integration
+- Updated `src/database/schema.ts` — Added `drive_folder_id?: string` to ConversationMetadata
+- Updated `src/sheets/client.ts` — Added column P for `driveFolderUrl`, expanded ranges to A:P
+- Updated `src/types/rdd.ts` — Added `CasoModificacionPayload`, `CasoCierrePayload`, optional `driveFolderUrl` field
 
-### Data Layer
-- New Google Sheet (RDD REGISTRO) — Separate from SaaS Sheets
-  - Columns: Causa_ID, Demandado, Etapa_Actual, Documentos_En_RDD, Fecha_Actualización
-  - Append-only for audit trail (same pattern as Phase 2)
-  - Updated when documents arrive or status changes
+### Tests
+- `tests/unit/drive-client.test.ts` — 2 tests verifying module exports + function signatures
+- `tests/unit/webhook.test.ts` — Updated with Drive client mocks (6 tests, 2 skipped)
+- `tests/unit/webhook-modificacion.test.ts` — 6 tests covering signature validation, payload validation, DB updates
+- `tests/unit/webhook-cierre.test.ts` — 6 tests covering signature validation, payload validation, conversation closure
+- `tests/integration/webhook.test.ts` — 2 tests covering full webhook → Drive → Sheets → DB flow
 
-**Key decisions (Resolved):**
-- **D22:** WhatsApp for document delivery (not email/upload)
-- **D23:** SaaS webhook #3 determines Resueltos status
-- **D24:** Metadata via filename (type-date.pdf)
-- **D25:** 3-webhook architecture for lifecycle events
-- See PROGRESS.md for full decision details
+**Test status:** ✅ 88 tests passing | 2 skipped (90 total, 11 test files)
 
-**Tests needed:**
-- Webhook integration: 3 handlers + state transitions
-- Drive operations: create folder, upload file, search
-- Agent attachment handling: receive PDF, classify, save
-- RDD Sheets: append-only, audit trail
+**Key decisions:**
+- **D22-D25:** See PROGRESS.md for full decision log
+- Use Google Service Account for Drive auth (no OAuth)
+- Retry with exponential backoff for rate limits (429) and 5xx errors
+- Drive folder IDs generated by RDD, not provided by SaaS webhook
+- Schema extensible for Phase 5+ (document attachment handling)
+
+**Commits:**
+- eebd548: feat: Phase 4 Drive Integration - Complete
 
 **Not in Phase 4 scope (Phase 5+):**
 - WhatsApp SDK integration (Phase 5)
+- PDF attachment processing from WhatsApp (Phase 5)
 - Admin dashboard / UI (Phase 5)
-- Notification system (Phase 6)
-- Cloud deployment (Phase 6)
+- Document search functionality (Phase 5)
 
 ---
 
