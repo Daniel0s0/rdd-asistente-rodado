@@ -1,6 +1,6 @@
 # RDD Implementation Roadmap
 
-**Status:** Phase 1 ✅ + Phase 2 ✅ | Phase 3 (🚧 In Planning)
+**Status:** Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ | Phase 4 (🚧 In Planning)
 
 Last updated: 2026-05-29
 
@@ -69,29 +69,38 @@ Last updated: 2026-05-29
 
 ---
 
-## Phase 3: Agent + Database (🚧 In Planning)
+## Phase 3: Agent + Database ✅
 
-**Scope:**
-- Implement Claude SDK multi-turn conversation parser
-- Store conversations in SQLite (src/database/)
-- Parse user input: "acuerdo $500k 5 cuotas" → extract montos, fechas
-- Respond with confirmation + next steps
+**What was built:**
 
-**Key decisions (TBD):**
-- SQLite vs Postgres?
-- Where does conversation context live? (memory or persistent)
-- How do we trigger RDD from webhook vs manual user input?
-- Conversation format: plain text or structured?
+### Phase 3a: SQLite Schema (✅ Complete)
+- `src/database/schema.ts` — SQL DDL + TypeScript types (conversations, messages, audit_log)
+- `src/database/sqlite.ts` — DB client initialization (singleton)
+- `src/database/models.ts` — 10 CRUD async functions
+- Tests: 20 tests, 100% pass
 
-**Blockers:**
-- None yet (planning phase)
+### Phase 3b: Multi-Turn Claude Agent (✅ Complete)
+- `src/agent/claude-agent.ts` — Singleton agent, 12-step orchestration
+- `src/agent/message-parser.ts` — Intent detection (5 types), financial extraction (6 formats)
+- `src/agent/agent-db.ts` — 4 DB wrapper functions
+- `src/api/agent.ts` — POST /agent/chat endpoint
+- `src/types/agent.ts` — Zod schemas
+- Tests: 45 new tests (76 total), 100% pass
 
-**Planned commits:**
-1. Create database schema + client (src/database/client.ts)
-2. Implement conversation parser (src/agent/parser.ts)
-3. Implement Claude API integration (src/agent/claude-api.ts)
-4. Write unit + integration tests
-5. Integrate with webhook (POST /webhook needs to call agent)
+**Key decisions:**
+- D12-D20: See PROGRESS.md for full decision log
+- SQLite for Phase 3 (switchable to Postgres in Phase 5)
+- Regex-based intent parsing (Claude tool_use in Phase 4+)
+- Atomic message + audit writes (Domain Invariant #4, #8)
+- 429 retry with exponential backoff (DI #9)
+
+**Test status:** ✅ 76/76 passing (45 new + 31 pre-existing)
+
+**Blockers:** None
+
+**Commits:**
+- d9ab5ac: feat: Phase 3b Multi-Turn Claude Agent & Conversation Persistence
+- e2bad94: tests: Add Phase 3b test suite (31 tests, 100% pass)
 
 ---
 
