@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './config/env-loader';
 import express, { Request, Response, NextFunction } from 'express';
 import { getEnv } from '@config/env';
 import { logger } from '@utils/logger';
