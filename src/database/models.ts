@@ -340,6 +340,30 @@ export async function closeConversation(
   return rowToConversation(closed);
 }
 
+/**
+ * List all conversations with optional filtering and pagination.
+ *
+ * @param options.onlyOpen - If true, exclude closed conversations (default: false).
+ * @param options.limit    - Maximum rows to return (default: 50).
+ * @param options.offset   - Pagination offset (default: 0).
+ * @returns Array of Conversation objects, newest first.
+ */
+export async function listConversations(options?: {
+  onlyOpen?: boolean;
+  limit?: number;
+  offset?: number;
+}): Promise<Conversation[]> {
+  const db = getDatabase();
+  const { onlyOpen = false, limit = 50, offset = 0 } = options ?? {};
+
+  let sql = 'SELECT * FROM conversations';
+  if (onlyOpen) sql += ' WHERE closed_at IS NULL';
+  sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+
+  const rows = db.prepare(sql).all(limit, offset) as ConversationRow[];
+  return rows.map(rowToConversation);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Message CRUD
 // ─────────────────────────────────────────────────────────────────────────────

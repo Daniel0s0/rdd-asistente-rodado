@@ -1,6 +1,6 @@
 # RDD Implementation Roadmap
 
-**Status:** Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ + Phase 4 ✅ + Phase 4.5 ✅ + Phase 5 ✅ | All Phases Complete
+**Status:** Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ + Phase 4 ✅ + Phase 4.5 ✅ + Phase 5 ✅ + Phase 5.1 ✅ | All Core Phases Complete
 
 Last updated: 2026-05-30
 
@@ -16,6 +16,7 @@ Last updated: 2026-05-30
 | 4 | Drive Integration | ✅ Complete | Google Drive folder management, 3-webhook lifecycle handlers |
 | 4.5 | API Security Layer | ✅ Complete | CORS, Helmet, API Key auth, rate limiting |
 | 5 | UI Layer | ✅ Complete | React + Vite dashboard, chat interface, API integration |
+| 5.1 | GET /cases Endpoint | ✅ Complete | List conversations endpoint, Dashboard case selection UI |
 
 ---
 
@@ -212,14 +213,47 @@ Last updated: 2026-05-30
 
 ---
 
-## Phase 5: UI Layer (⏳ Pending)
+## Phase 5: UI Layer ✅
 
-**Scope:**
-- Dashboard showing cases, conversations, documents
-- Chat interface for RDD agent
-- Admin panel for compliance logging
+**What was built:**
+- `ui/` folder — React 19 + Vite project with TypeScript + Tailwind
+- `ui/src/components/Dashboard.tsx` — Causa ID entry, defaults to manual input
+- `ui/src/components/ChatWindow.tsx` — Multi-turn chat interface with message history
+- `ui/src/services/api.ts` — HTTP client for /agent/chat endpoint with API key auth
+- `ui/src/App.tsx` — Router between Dashboard and ChatWindow
+- Environment configuration and Vite dev server proxy
 
-**Note:** May be built separately (external to this repo). Depends on Phase 3-4 complete.
+**Key decisions:**
+- D32: React + Vite in same repo (not separate) for unified deployment
+- D33: React 19 + TypeScript + Tailwind CSS stack
+- D34: API Key (Bearer token) authentication, matching backend
+
+**Tests status:** ✅ No unit tests for Phase 5 (focus on E2E manual testing)
+
+**Commits:**
+- d2e83b1: feat: Phase 5 UI Layer - React + Vite Dashboard and Chat Interface
+
+---
+
+## Phase 5.1: GET /cases Endpoint ✅
+
+**What was built:**
+- `src/database/models.ts` — Added `listConversations()` function
+- `src/api/cases.ts` — New `casesHandler` endpoint
+- `src/index.ts` — Registered `GET /cases` route
+- `ui/src/services/api.ts` — Added `getCases()` function
+- `ui/src/components/Dashboard.tsx` — Enhanced with case list UI
+- `tests/unit/cases.test.ts` — 6 unit tests for endpoint
+
+**Key decisions:**
+- D35: GET /cases endpoint for better UX (list instead of manual input)
+
+**Tests status:** ✅ 6 new tests + 97 existing (all passing)
+
+**Purpose:**
+- Users see list of active cases on Dashboard load
+- Click to select case instead of typing causa_id
+- Fallback: Manual input still available
 
 ---
 

@@ -1,6 +1,21 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 const API_KEY = import.meta.env.VITE_API_KEY || '';
 
+export interface CasesResponse {
+  success: boolean;
+  data?: {
+    cases: Array<{
+      causaId: string;
+      status: 'active' | 'closed';
+      createdAt: string;
+      metadata: Record<string, unknown>;
+    }>;
+    total: number;
+  };
+  timestamp: string;
+  error?: string;
+}
+
 export interface AgentChatResponse {
   success: boolean;
   data?: {
@@ -15,6 +30,35 @@ export interface AgentChatResponse {
   };
   timestamp: string;
   error?: string;
+}
+
+export async function getCases(): Promise<CasesResponse> {
+  const url = `${API_URL}/cases`;
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${API_KEY}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        errorData.message || `HTTP ${response.status}: ${response.statusText}`
+      );
+    }
+
+    return await response.json();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return {
+      success: false,
+      error: message,
+      timestamp: new Date().toISOString(),
+    };
+  }
 }
 
 export async function sendMessage(

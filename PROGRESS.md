@@ -712,3 +712,86 @@ Phase 5 delivered a React + Vite frontend for the RDD agent system. The UI provi
 - [ ] Deploy to production (nginx reverse proxy, PM2)
 
 ---
+
+## May 30, 2026 — Phase 5.1: GET /cases Endpoint ✅
+
+### Summary
+
+Phase 5.1 implemented a GET /cases endpoint to fetch the list of active cases (conversations) from the database. This allows the Dashboard UI to display a list of cases for users to select from, instead of requiring manual causa_id entry.
+
+### Architecture
+
+**Backend (3 files added/modified):**
+1. `src/database/models.ts` — Added `listConversations(options?)` function
+   - Parameters: `onlyOpen` (default: false), `limit` (default: 50), `offset` (default: 0)
+   - Returns: Array of Conversation objects ordered by created_at DESC
+   - Uses index: `idx_conversations_created_at` for efficient sorting
+
+2. `src/api/cases.ts` — New handler `casesHandler`
+   - Endpoint: `GET /cases?open=false`
+   - Auth: Requires `requireApiKey` middleware (Bearer token)
+   - Response: `{ success: true, data: { cases: [...], total: N }, timestamp }`
+
+3. `src/index.ts` — Registered route
+   - Route: `app.get('/cases', requireApiKey, chatLimiter, casesHandler)`
+   - Rate limiting: Uses `chatLimiter` (30 req/min, same as /agent/chat)
+
+**Frontend (2 files added/modified):**
+1. `ui/src/services/api.ts` — Added `getCases()` function
+   - Calls: `GET /api/cases` with Bearer auth
+   - Returns: `CasesResponse` interface with typed cases array
+
+2. `ui/src/components/Dashboard.tsx` — Enhanced with case list
+   - On mount: Calls `getCases()` to populate list
+   - Shows: Clickable case rows with ID, status (active/closed), created date
+   - Fallback: Manual causa_id input for cases not in DB or testing
+
+### Decisions Made
+
+**D35: GET /cases endpoint for better UX**
+- Chose: Fetch list of cases from DB instead of manual text input
+- Reason: Better UX, faster user interaction, reduced typos in causa_id
+- Trade-off: Adds one DB query + network roundtrip on Dashboard load
+- Impact: Dashboard now shows active cases; users click to select instead of typing
+- Future: Can add filters (status, date range, search) if needed
+
+### Learnings
+
+**L19: Response serialization boundary**
+- What: Date objects must be converted to ISO strings at API response boundary
+- Why: JSON.stringify doesn't include Date objects; must use `.toISOString()`
+- Code: `createdAt: c.created_at.toISOString()` in response mapping
+- Impact: Frontend receives ISO strings, converts back with `new Date(createdAt)`
+- Lesson: Always serialize dates at API boundary, deserialize on client
+
+### Tests
+
+**`tests/unit/cases.test.ts`** — 6 tests covering:
+1. Returns 200 with list of conversations
+2. Returns 200 with empty array when no cases
+3. Marks closed cases with status=closed
+4. Passes onlyOpen=true by default
+5. Passes onlyOpen=false when query param open=false
+6. Returns 500 on database error
+
+All tests use mocked `listConversations` and `@config/env`.
+
+### Blockers (None)
+
+- All tests passing ✅
+- Build successful ✅
+- API integration working ✅
+- UI components rendering ✅
+
+### Phase 5.1 Complete
+
+- ✅ `listConversations()` function in models.ts
+- ✅ `casesHandler` endpoint in api/cases.ts
+- ✅ Route registered in index.ts
+- ✅ `getCases()` client function in UI
+- ✅ Dashboard component enhanced with case list
+- ✅ 6 new unit tests (all passing)
+- ✅ Response format documented
+- ✅ Ready for deployment
+
+---
