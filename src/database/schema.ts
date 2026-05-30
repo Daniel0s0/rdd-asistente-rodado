@@ -155,6 +155,9 @@ export interface ConversationMetadata {
 
   /** System: total number of messages in this conversation */
   message_count?: number;
+
+  /** Drive: root folder ID created on causa-nueva */
+  drive_folder_id?: string;
 }
 
 /**

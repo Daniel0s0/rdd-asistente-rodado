@@ -3,8 +3,19 @@ import crypto from 'crypto';
 import { getEnv } from '@config/env';
 import { logger } from '@utils/logger';
 import { appendRegistroRow } from '@sheets/client';
-import { createConversation } from '@database/models';
-import { CausaWebhookPayload, RegistroRow } from '@domain/rdd';
+import {
+  createConversation,
+  getConversationByCausaId,
+  updateConversationMetadata,
+  closeConversation,
+} from '@database/models';
+import {
+  CausaWebhookPayload,
+  CasoModificacionPayload,
+  CasoCierrePayload,
+  RegistroRow,
+} from '@domain/rdd';
+import { createCaseFolder } from '@drive/client';
 
 class ValidationError extends Error {
   constructor(message: string) {
@@ -17,6 +28,13 @@ class UnauthorizedError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'UnauthorizedError';
+  }
+}
+
+class NotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NotFoundError';
   }
 }
 
@@ -58,19 +76,54 @@ function validateCausaPayload(payload: unknown): CausaWebhookPayload {
     throw new ValidationError('cliente_nombre es requerido');
   }
 
-  if (!p.drive_folder_id || typeof p.drive_folder_id !== 'string') {
-    throw new ValidationError('drive_folder_id es requerido');
-  }
-
   return {
     causa_id: p.causa_id,
     cliente_id: typeof p.cliente_id === 'string' ? p.cliente_id : undefined,
     cliente_nombre: p.cliente_nombre,
     cliente_rut: typeof p.cliente_rut === 'string' ? p.cliente_rut : undefined,
-    drive_folder_id: p.drive_folder_id,
+    drive_folder_id: typeof p.drive_folder_id === 'string' ? p.drive_folder_id : undefined,
     demandado: typeof p.demandado === 'string' ? p.demandado : undefined,
     rit: typeof p.rit === 'string' ? p.rit : undefined,
     tribunal: typeof p.tribunal === 'string' ? p.tribunal : undefined,
+  };
+}
+
+function validateModificacionPayload(payload: unknown): CasoModificacionPayload {
+  if (!payload || typeof payload !== 'object') {
+    throw new ValidationError('Invalid payload');
+  }
+
+  const p = payload as Record<string, unknown>;
+
+  if (!p.causa_id || typeof p.causa_id !== 'string') {
+    throw new ValidationError('causa_id es requerido');
+  }
+
+  return {
+    causa_id: p.causa_id,
+    rit: typeof p.rit === 'string' ? p.rit : undefined,
+    tribunal: typeof p.tribunal === 'string' ? p.tribunal : undefined,
+    cambios: typeof p.cambios === 'object' ? p.cambios : undefined,
+    timestamp: typeof p.timestamp === 'string' ? p.timestamp : undefined,
+  };
+}
+
+function validateCierrePayload(payload: unknown): CasoCierrePayload {
+  if (!payload || typeof payload !== 'object') {
+    throw new ValidationError('Invalid payload');
+  }
+
+  const p = payload as Record<string, unknown>;
+
+  if (!p.causa_id || typeof p.causa_id !== 'string') {
+    throw new ValidationError('causa_id es requerido');
+  }
+
+  return {
+    causa_id: p.causa_id,
+    fecha_cierre: typeof p.fecha_cierre === 'string' ? p.fecha_cierre : undefined,
+    motivo: typeof p.motivo === 'string' ? p.motivo : undefined,
+    timestamp: typeof p.timestamp === 'string' ? p.timestamp : undefined,
   };
 }
 
@@ -85,6 +138,10 @@ export async function webhookCausaNuevaHandler(
 
     const causa = validateCausaPayload(payload);
 
+    // 1. Crear carpetas en Drive (Phase 4)
+    logger.debug({ causaId: causa.causa_id }, 'Creating Drive case folder structure');
+    const driveFolder = await createCaseFolder(causa.causa_id);
+
     const registroRow: RegistroRow = {
       causaId: causa.causa_id,
       clienteNombre: causa.cliente_nombre,
@@ -92,7 +149,8 @@ export async function webhookCausaNuevaHandler(
       demandado: causa.demandado,
       rit: causa.rit,
       tribunal: causa.tribunal,
-      driveFolderId: causa.drive_folder_id,
+      driveFolderId: driveFolder.folderId,
+      driveFolderUrl: driveFolder.webViewLink,
       fechaIngreso: new Date().toISOString(),
     };
 
@@ -105,23 +163,26 @@ export async function webhookCausaNuevaHandler(
       tribunal: causa.tribunal,
       rit: causa.rit,
       etapa: 'litigacion',
+      drive_folder_id: driveFolder.folderId,
     });
 
     logger.info(
       {
         causaId: causa.causa_id,
         conversationId: conversation.id,
+        driveFolderId: driveFolder.folderId,
         sheetsRowId,
       },
-      'Webhook processed: causa and conversation created'
+      'Webhook processed: causa, Drive folders, and conversation created'
     );
 
     res.status(201).json({
       success: true,
       causa_id: causa.causa_id,
       conversation_id: conversation.id,
+      drive_folder_id: driveFolder.folderId,
       sheets_row_id: sheetsRowId,
-      message: 'Causa registrada. ¿Cuál es el resultado del juicio?',
+      message: 'Causa registrada con carpetas en Drive. ¿Cuál es el resultado del juicio?',
     });
   } catch (error) {
     if (error instanceof UnauthorizedError) {
@@ -143,6 +204,170 @@ export async function webhookCausaNuevaHandler(
       res.status(400).json({
         success: false,
         error: 'validation_error',
+        message: error.message,
+        timestamp: new Date().toISOString(),
+      });
+    } else {
+      logger.error({ error, action: 'webhook_internal_error' }, 'Webhook processing failed');
+      res.status(500).json({
+        success: false,
+        error: 'internal_error',
+        message: 'Error procesando webhook',
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+}
+
+/**
+ * POST /webhook/caso-modificacion
+ * SaaS webhook #2: actualiza RIT y tribunal en conversación.
+ */
+export async function webhookCasoModificacionHandler(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const payload = req.body;
+
+    validateWebhookSignature(req, payload);
+
+    const modificacion = validateModificacionPayload(payload);
+
+    // Obtener conversación existente
+    const conversation = await getConversationByCausaId(modificacion.causa_id);
+    if (!conversation) {
+      throw new NotFoundError(`Causa ${modificacion.causa_id} no encontrada en DB`);
+    }
+
+    // Actualizar metadata con RIT y tribunal
+    const updates: Record<string, unknown> = {};
+    if (modificacion.rit) updates.rit = modificacion.rit;
+    if (modificacion.tribunal) updates.tribunal = modificacion.tribunal;
+
+    await updateConversationMetadata(conversation.id, updates);
+
+    logger.info(
+      { causaId: modificacion.causa_id, conversationId: conversation.id, updates },
+      'Webhook caso-modificacion processed'
+    );
+
+    res.status(200).json({
+      success: true,
+      causa_id: modificacion.causa_id,
+      message: 'Caso modificación registrado',
+    });
+  } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      logger.warn(
+        { error: error.message, action: 'webhook_auth_failed' },
+        'Webhook signature validation failed'
+      );
+      res.status(401).json({
+        success: false,
+        error: 'invalid_signature',
+        message: error.message,
+        timestamp: new Date().toISOString(),
+      });
+    } else if (error instanceof ValidationError) {
+      logger.warn(
+        { error: error.message, action: 'webhook_validation_failed' },
+        'Webhook payload validation failed'
+      );
+      res.status(400).json({
+        success: false,
+        error: 'validation_error',
+        message: error.message,
+        timestamp: new Date().toISOString(),
+      });
+    } else if (error instanceof NotFoundError) {
+      logger.warn(
+        { error: error.message, action: 'webhook_not_found' },
+        'Causa not found in DB'
+      );
+      res.status(404).json({
+        success: false,
+        error: 'not_found',
+        message: error.message,
+        timestamp: new Date().toISOString(),
+      });
+    } else {
+      logger.error({ error, action: 'webhook_internal_error' }, 'Webhook processing failed');
+      res.status(500).json({
+        success: false,
+        error: 'internal_error',
+        message: 'Error procesando webhook',
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+}
+
+/**
+ * POST /webhook/caso-cierre
+ * SaaS webhook #3: cierra conversación.
+ */
+export async function webhookCasoCierreHandler(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const payload = req.body;
+
+    validateWebhookSignature(req, payload);
+
+    const cierre = validateCierrePayload(payload);
+
+    // Obtener conversación existente
+    const conversation = await getConversationByCausaId(cierre.causa_id);
+    if (!conversation) {
+      throw new NotFoundError(`Causa ${cierre.causa_id} no encontrada en DB`);
+    }
+
+    // Cerrar conversación
+    await closeConversation(conversation.id, 'webhook_sistema');
+
+    logger.info(
+      { causaId: cierre.causa_id, conversationId: conversation.id },
+      'Webhook caso-cierre processed'
+    );
+
+    res.status(200).json({
+      success: true,
+      causa_id: cierre.causa_id,
+      message: 'Caso cerrado',
+    });
+  } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      logger.warn(
+        { error: error.message, action: 'webhook_auth_failed' },
+        'Webhook signature validation failed'
+      );
+      res.status(401).json({
+        success: false,
+        error: 'invalid_signature',
+        message: error.message,
+        timestamp: new Date().toISOString(),
+      });
+    } else if (error instanceof ValidationError) {
+      logger.warn(
+        { error: error.message, action: 'webhook_validation_failed' },
+        'Webhook payload validation failed'
+      );
+      res.status(400).json({
+        success: false,
+        error: 'validation_error',
+        message: error.message,
+        timestamp: new Date().toISOString(),
+      });
+    } else if (error instanceof NotFoundError) {
+      logger.warn(
+        { error: error.message, action: 'webhook_not_found' },
+        'Causa not found in DB'
+      );
+      res.status(404).json({
+        success: false,
+        error: 'not_found',
         message: error.message,
         timestamp: new Date().toISOString(),
       });

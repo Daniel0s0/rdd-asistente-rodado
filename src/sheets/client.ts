@@ -3,64 +3,9 @@ import { JWT } from 'google-auth-library';
 import { getEnv } from '@config/env';
 import { logger } from '@utils/logger';
 import { RegistroRow } from '@domain/rdd';
+import { retryWithBackoff } from '@utils/retry';
 
 let sheetsClient: sheets_v4.Sheets | null = null;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Retry con Backoff Exponencial
-// ─────────────────────────────────────────────────────────────────────────────
-
-const SHEETS_RETRY_MAX_ATTEMPTS = 3;
-const SHEETS_RETRY_BASE_DELAY_MS = 1000; // 1 segundo
-
-/**
- * Reintenta una operación con backoff exponencial ante errores transitorios.
- *
- * Errores reintentables: 429 (rate limit) y 5xx (errores de servidor).
- * Errores no reintentables (4xx distintos a 429): se lanzan inmediatamente.
- * Patrón de espera: 1s → 2s → 4s (si maxAttempts = 3).
- *
- * Cumple DI #6 (Rate Limiting) y DI #9 (Error Recovery).
- */
-async function retryWithBackoff<T>(
-  fn: () => Promise<T>,
-  maxAttempts: number = SHEETS_RETRY_MAX_ATTEMPTS
-): Promise<T> {
-  let lastError: Error | undefined;
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      const err = error as any;
-      lastError = error as Error;
-
-      // Determinar si el error es reintentable (429 rate limit o 5xx servidor)
-      const statusCode = err.code ?? err.status ?? 0;
-      const isRetryable = statusCode === 429 || statusCode >= 500;
-
-      if (isRetryable && attempt < maxAttempts - 1) {
-        // Backoff exponencial: 1s, 2s, 4s, ...
-        const delayMs = SHEETS_RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
-        logger.warn(
-          { attempt: attempt + 1, maxAttempts, delayMs, codigo: statusCode },
-          'Solicitud a Google Sheets falló, reintentando con backoff'
-        );
-        await new Promise<void>(resolve => setTimeout(resolve, delayMs));
-      } else if (!isRetryable) {
-        // Error no reintentable (401, 403, 404, etc.) — lanzar inmediatamente
-        throw error;
-      }
-      // Si es reintentable pero ya agotamos intentos, salir del loop
-    }
-  }
-
-  // Todos los intentos agotados
-  if (lastError) {
-    throw lastError;
-  }
-  throw new Error('Error desconocido en retryWithBackoff');
-}
 
 async function getSheetsClient(): Promise<sheets_v4.Sheets> {
   if (sheetsClient) {
@@ -94,6 +39,7 @@ export async function appendRegistroRow(row: RegistroRow): Promise<string> {
       row.rit || '',
       row.tribunal || '',
       row.driveFolderId,
+      row.driveFolderUrl || '',
       row.fechaIngreso,
     ],
   ];
@@ -101,7 +47,7 @@ export async function appendRegistroRow(row: RegistroRow): Promise<string> {
   try {
     const result = await client.spreadsheets.values.append({
       spreadsheetId: env.GOOGLE_SHEETS_SPREADSHEET_ID,
-      range: 'REGISTRO!A:H',
+      range: 'REGISTRO!A:P',
       valueInputOption: 'RAW',
       requestBody: { values },
     });
@@ -175,7 +121,7 @@ export async function updateRegistroRow(
     const getRowResponse = await retryWithBackoff(() =>
       client.spreadsheets.values.get({
         spreadsheetId: env.GOOGLE_SHEETS_SPREADSHEET_ID,
-        range: `REGISTRO!A${targetRowIndex}:O${targetRowIndex}`,
+        range: `REGISTRO!A${targetRowIndex}:P${targetRowIndex}`,
       })
     );
 
@@ -190,21 +136,22 @@ export async function updateRegistroRow(
       currentRow[4],  // rit
       currentRow[5],  // tribunal
       currentRow[6],  // driveFolderId
-      currentRow[7],  // fechaIngreso
-      updates.tipoIngreso ?? currentRow[8] ?? '',
-      updates.acuerdoMonto ?? currentRow[9] ?? '',
-      updates.acuerdoCuotas ?? currentRow[10] ?? '',
-      updates.acuerdoFecha ?? currentRow[11] ?? '',
-      updates.montoPago ?? currentRow[12] ?? '',
-      updates.fechaPago ?? currentRow[13] ?? '',
-      updates.porcentajeHonorarios ?? currentRow[14] ?? '',
+      currentRow[7],  // driveFolderUrl (preserved)
+      currentRow[8],  // fechaIngreso
+      updates.tipoIngreso ?? currentRow[9] ?? '',
+      updates.acuerdoMonto ?? currentRow[10] ?? '',
+      updates.acuerdoCuotas ?? currentRow[11] ?? '',
+      updates.acuerdoFecha ?? currentRow[12] ?? '',
+      updates.montoPago ?? currentRow[13] ?? '',
+      updates.fechaPago ?? currentRow[14] ?? '',
+      updates.porcentajeHonorarios ?? currentRow[15] ?? '',
     ];
 
     // 4. Actualizar fila (con retry) — operación atómica: TODO o NADA
     const updateResponse = await retryWithBackoff(() =>
       client.spreadsheets.values.update({
         spreadsheetId: env.GOOGLE_SHEETS_SPREADSHEET_ID,
-        range: `REGISTRO!A${targetRowIndex}:O${targetRowIndex}`,
+        range: `REGISTRO!A${targetRowIndex}:P${targetRowIndex}`,
         valueInputOption: 'RAW',
         requestBody: {
           values: [updatedRow],

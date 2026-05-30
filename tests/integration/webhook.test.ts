@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import crypto from 'crypto';
 import { webhookCausaNuevaHandler } from '@api/webhook';
 
+const TEST_SECRET = 'test_webhook_secret';
+
 vi.mock('@sheets/client', () => ({
   appendRegistroRow: vi.fn(async () => 'A42'),
 }));
@@ -16,7 +18,21 @@ vi.mock('@database/models', () => ({
   }),
 }));
 
-const TEST_SECRET = 'test_webhook_secret';
+vi.mock('@drive/client', () => ({
+  createCaseFolder: vi.fn().mockResolvedValue({
+    folderId: 'mock-folder-id',
+    webViewLink: 'https://drive.google.com/drive/folders/mock-folder-id',
+    porResolverFolderId: 'mock-por-resolver-id',
+    resueltosFolderId: 'mock-resueltos-id',
+  }),
+}));
+
+vi.mock('@config/env', () => ({
+  getEnv: () => ({
+    SAAS_WEBHOOK_SECRET: 'test_webhook_secret',
+    LOG_LEVEL: 'silent',
+  }),
+}));
 
 describe('Webhook Integration', () => {
   function generateSignature(body: unknown): string {
@@ -32,7 +48,6 @@ describe('Webhook Integration', () => {
       cliente_id: 'client-001',
       cliente_nombre: 'Empresa ABC Ltda.',
       cliente_rut: '76123456-7',
-      drive_folder_id: 'folder_abc123xyz',
       demandado: 'Juan Pérez González',
       rit: 'RIT-2024-001234',
       tribunal: 'Juzgado de Letras en lo Civil de Santiago',
@@ -60,8 +75,10 @@ describe('Webhook Integration', () => {
       expect.objectContaining({
         success: true,
         causa_id: 'cause-456',
-        sheets_row_id: expect.stringMatching(/^[A-Z]+\d+$/),
-        message: 'Causa registrada. ¿Cuál es el resultado del juicio?',
+        sheets_row_id: 'A42',
+        drive_folder_id: 'mock-folder-id',
+        conversation_id: expect.any(String),
+        message: expect.stringContaining('Causa registrada'),
       })
     );
   });
@@ -70,7 +87,6 @@ describe('Webhook Integration', () => {
     const body = {
       causa_id: 'minimal-123',
       cliente_nombre: 'Cliente Minimal',
-      drive_folder_id: 'folder_minimal',
     };
 
     const signature = generateSignature(body);
@@ -94,6 +110,9 @@ describe('Webhook Integration', () => {
       expect.objectContaining({
         success: true,
         causa_id: 'minimal-123',
+        sheets_row_id: 'A42',
+        drive_folder_id: 'mock-folder-id',
+        conversation_id: expect.any(String),
       })
     );
   });

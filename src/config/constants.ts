@@ -31,4 +31,10 @@ export const DEFAULT_HONOR_PERCENTAGE = 20;
 export const GOOGLE_BATCH_SIZE = 100;
 export const GOOGLE_API_TIMEOUT_MS = 30000;
 
+export const DRIVE_MIME_TYPES = {
+  FOLDER: 'application/vnd.google-apps.folder',
+  PDF: 'application/pdf',
+  TEXT: 'text/plain',
+} as const;
+
 export const VERSION = '0.1.0';
