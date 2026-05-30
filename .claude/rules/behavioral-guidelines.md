@@ -51,6 +51,8 @@ Tu sesión principal:
 | 🚫 Menos rewrites | Validar ANTES de pushear = menos mistakes |
 | 📊 Trazabilidad | Cada agente genera output que documentas |
 
+**🔗 See also:** [harness-engineering.md](harness-engineering.md) for detailed state management, PROGRESS.md documentation, and how agents read framework files.
+
 ### Ejemplo Completo
 
 ```
