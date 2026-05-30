@@ -23,7 +23,11 @@ function main() {
   const env = getEnv();
   const app = express();
 
-  app.use(helmet());
+  // In development, allow unsafe-eval for socket.io; in production keep strict CSP
+  const helmetConfig = env.NODE_ENV === 'development'
+    ? { contentSecurityPolicy: false }
+    : { contentSecurityPolicy: { directives: { scriptSrc: ["'self'", "'unsafe-eval'"] } } };
+  app.use(helmet(helmetConfig));
   app.use(
     cors({
       origin: env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()),

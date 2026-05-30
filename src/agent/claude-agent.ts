@@ -10,7 +10,7 @@
  *   const response = await claudeAgent.chat(causaId, userMessage);
  */
 
-import { Anthropic } from '@anthropic-ai/sdk';
+import { Anthropic, APIError as AnthropicAPIError } from '@anthropic-ai/sdk';
 import { getEnv } from '@config/env';
 import { logger } from '@utils/logger';
 import {
@@ -376,7 +376,6 @@ export class ClaudeAgent {
         system: systemPrompt,
         messages: claudeMessages,
         max_tokens: 2048,
-        temperature: env.CLAUDE_TEMPERATURE,
       });
 
       for await (const event of stream) {
@@ -390,26 +389,28 @@ export class ClaudeAgent {
       }
 
       finalMessage = await stream.finalMessage();
-    } catch (err) {
-      const apiErr = err as AnthropicAPIError;
-      const status = apiErr.status;
+    } catch (err: unknown) {
+      const apiErr = err instanceof AnthropicAPIError ? err : null;
+      const status = apiErr?.status;
+      const errorMessage = apiErr?.message || (err instanceof Error ? err.message : 'Unknown error');
+
       logger.error(
-        { causaId, status, error: apiErr.message },
+        { causaId, status, error: errorMessage },
         'ClaudeAgent.chatStream: Claude API error'
       );
 
       if (status === 429 || (status !== undefined && status >= 500)) {
         throw new TemporaryError(
-          `Claude API temporary error (status ${status}): ${apiErr.message}`
+          `Claude API temporary error (status ${status}): ${errorMessage}`
         );
       }
       if (status === 401 || status === 403) {
         throw new ClaudeAPIError(
-          `Claude API auth error (status ${status}): ${apiErr.message}`
+          `Claude API auth error (status ${status}): ${errorMessage}`
         );
       }
       if (status === 400) {
-        throw new ValidationError(`Claude API bad request (status 400): ${apiErr.message}`);
+        throw new ValidationError(`Claude API bad request (status 400): ${errorMessage}`);
       }
       throw err;
     }
