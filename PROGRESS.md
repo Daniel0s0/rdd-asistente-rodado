@@ -628,3 +628,87 @@ Phase 4.5 delivered CORS, Helmet HTTP security headers, API Key authentication, 
 - [TASKS.md](TASKS.md) — What phases are complete, what's next
 - [CLAUDE.md](CLAUDE.md) — Discipline rules and project overview
 - [.claude/rules/](.claude/rules/) — Auto-loading rules
+
+---
+
+## May 30, 2026 — Phase 5: UI Layer ✅
+
+### Summary
+
+Phase 5 delivered a React + Vite frontend for the RDD agent system. The UI provides:
+- Dashboard: Causa ID entry point
+- ChatWindow: Multi-turn conversation with RDD agent
+- API Integration: Secure authentication with API key, proper error handling
+
+### Decisions Made
+
+**D32: Integrate UI in Same Repo**
+- Chose: `/ui` folder with React + Vite
+- Reason: User preference, simpler deployment, unified start scripts
+- Trade-off: Two package.json files, but cleaner than monorepo
+- Impact: Single `npm run dev:all` script starts both backend + frontend
+- Implementation: Backend on :3001, Frontend on :5173, Vite proxy routes /api calls
+
+**D33: React 19 + TypeScript + Tailwind**
+- Chose: Modern stack matching SaaS repo patterns
+- Reason: Fast development, familiar patterns, good DX
+- Trade-off: Added @tailwindcss/postcss dependency
+- Impact: All components styled with Tailwind utilities
+- Build: Production bundle ~195KB (before gzip)
+
+**D34: Frontend Authentication via API Key (not OAuth)**
+- Chose: Bearer token in Authorization header (matching backend)
+- Reason: Simple internal setup, no login flow needed for Phase 5
+- Trade-off: Static API key (not expiring), acceptable for internal use
+- Impact: UI/.env contains VITE_API_KEY, passed to every /agent/chat request
+- Integration: Backend requireApiKey middleware validates Bearer token
+
+### Learnings
+
+**L16: Tailwind CSS v4 PostCSS Plugin**
+- What: Tailwind v4 moved plugin to separate @tailwindcss/postcss package
+- Why: Cleaner separation of concerns
+- Impact: Must install @tailwindcss/postcss separately, update postcss.config.js
+- Lesson: Check Tailwind docs for latest version during setup
+
+**L17: TypeScript Strict Mode with Imports**
+- What: `verbatimModuleSyntax` requires type-only imports for types
+- Why: Clear distinction between values and types
+- Impact: Must use `import type { ... }` for interfaces/types
+- Code: `import type { AgentChatResponse } from '../services/api'`
+- Lesson: Helps avoid circular dependency issues and improves tree-shaking
+
+**L18: Vite Proxy for API Development**
+- What: Vite dev server can proxy API calls to different origin
+- Why: Avoids CORS issues during development, cleaner than env switching
+- Config: `server.proxy['/api'] → http://localhost:3001`
+- Usage: UI calls `/api/agent/chat` → forwarded to backend `/agent/chat`
+- Lesson: Simple solution for local development, no backend CORS pain
+
+### Blockers (None)
+
+- Build successful ✅
+- All components render ✅
+- API integration wired ✅
+- No production issues found ✅
+
+### Phase 5 Complete
+
+- ✅ React 19 + TypeScript Vite project in `/ui`
+- ✅ 3 components: Dashboard, ChatWindow, App
+- ✅ HTTP service layer with error handling (api.ts)
+- ✅ Tailwind CSS styling (modern, responsive)
+- ✅ Environment variables (.env.example, .env)
+- ✅ Vite build successful (~195KB)
+- ✅ Backend CORS + API Key auth configured
+- ✅ Development ready (npm run dev for backend, cd ui && npm run dev for frontend)
+
+### Next Phase (Phase 5.1 - Optional Enhancements)
+
+- [ ] Admin panel for compliance logging
+- [ ] GET /cases endpoint for case list (instead of manual ID entry)
+- [ ] Conversation persistence (reload page = keep messages)
+- [ ] WebSocket support for real-time chat
+- [ ] Deploy to production (nginx reverse proxy, PM2)
+
+---
