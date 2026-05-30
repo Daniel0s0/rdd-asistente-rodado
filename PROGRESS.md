@@ -795,3 +795,92 @@ All tests use mocked `listConversations` and `@config/env`.
 - ✅ Ready for deployment
 
 ---
+
+## May 30, 2026 — Phase 5.2 Complete: WebSocket Real-Time Chat
+
+### Decisions Made
+
+**D36: socket.io v4 (not raw ws)**
+- Chose: socket.io over raw WebSocket library
+- Reason: Auto-reconnection, room support, fallback to polling, TypeScript generics for type-safe events
+- Trade-off: Additional ~30KB in bundle; acceptable for production clarity
+- Impact: Chat has built-in resilience, no custom reconnection logic needed
+
+**D37: Streaming via `messages.stream()` vs batched response**
+- Chose: `messages.stream()` for token-by-token streaming
+- Reason: Real-time typing effect matches legal assistant workflow; users see progress instead of waiting
+- Trade-off: More complex error handling (stream can fail mid-response); acceptable tradeoff for UX
+- Impact: Chat responses appear incrementally; no "loading" spinner bottleneck
+
+**D38: Socket authentication via `join_case` event**
+- Chose: Validate API_KEY on socket `join_case` event, not on connection
+- Reason: Same auth mechanism as HTTP (Bearer token), reusable env var (UI_API_KEY)
+- Trade-off: Auth is per-room, not per-socket; acceptable (one user ≈ one socket)
+- Impact: No custom auth middleware needed; leverages existing pattern
+
+**D39: processingMap guard for concurrent messages**
+- Chose: Map<socketId, boolean> to prevent 2 concurrent send_message calls
+- Reason: Claude streams are sequential within a conversation; overlap would corrupt state
+- Trade-off: Simple guard (no queue); better to reject than queue
+- Impact: Client UI prevents duplicate sends (disabled button during send)
+
+**D40: socket.connected check in token callback**
+- Chose: Guard `socket.emit()` inside `onToken` callback with `socket.connected`
+- Reason: Mid-stream disconnect is possible; emitting to dead socket crashes handler
+- Trade-off: DB write completes even if socket disconnected (by design: persist to DB regardless)
+- Impact: Graceful degradation: user loses UI update but data is saved
+
+### Learnings
+
+**L11: Anthropic `messages.stream()` is AsyncIterable<MessageStreamEvent>**
+- Learned: SDK provides `.stream()` method that iterates events, NOT token chunks directly
+- Verified: Event type `content_block_delta` with `delta.type === 'text_delta'` extracts text
+- Future: Always check SDK version for stream API shape; don't assume token-level interface
+
+**L12: socket.io rooms are ephemeral**
+- Learned: `socket.rooms` is a Set; `socket.join(room)` and `socket.leave(room)` are async but idempotent
+- Verified: Joining twice doesn't error; leaving when not in room doesn't error
+- Future: Use rooms for isolation; no persistent state needed
+
+**L13: Vite proxy requires `ws: true` for WebSocket**
+- Learned: HTTP upgrade (connection) is proxied automatically; WebSocket frames need explicit `ws: true`
+- Verified: Without it, socket connection works in production but fails in dev proxy
+- Future: Always set `ws: true` in Vite proxy config for WebSocket endpoints
+
+**L14: Frontend and backend socket types must be duplicated**
+- Learned: TypeScript interfaces cannot be shared across ES modules without explicit import
+- Verified: ui/src/types/socket.ts is identical to src/types/agent.ts interfaces
+- Future: Consider a shared NPM package if types become complex; duplication is acceptable for small interfaces
+
+**L15: socket.io on() handler must not throw uncaught errors**
+- Learned: Socket handlers must wrap async work and emit errors explicitly
+- Verified: Error from `chatStream()` must be caught and emitted, not thrown
+- Future: All socket handlers follow try-catch + socket.emit('error') pattern
+
+### Blockers (None)
+
+- All 112 tests passing ✅
+- TypeScript zero errors ✅
+- Frontend build successful ✅
+- Backend builds successfully ✅
+- Socket protocol type-safe ✅
+- Real-time streaming working ✅
+
+### Phase 5.2 Complete
+
+- ✅ `chatStream()` method in ClaudeAgent using `messages.stream()`
+- ✅ `src/api/socket-handler.ts` with 3 event handlers (join, send, leave)
+- ✅ `src/index.ts` refactored: `http.createServer()` + SocketIOServer
+- ✅ Socket event types in `src/types/agent.ts` (backend)
+- ✅ Socket event types in `ui/src/types/socket.ts` (frontend)
+- ✅ `ui/src/services/socket.ts` singleton client with lifecycle
+- ✅ `ChatWindow.tsx` with streaming bubble UI + socket events
+- ✅ Vite proxy configured for `/socket.io` with `ws: true`
+- ✅ 11 new unit tests for socket handlers (all passing)
+- ✅ 112 total tests passing (11 new + 101 existing)
+- ✅ Zero TypeScript errors
+- ✅ Frontend and backend build successful
+- ✅ Backward compatible: `chat()` and `/agent/chat` unchanged
+- ✅ Ready for deployment
+
+---

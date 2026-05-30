@@ -1,6 +1,6 @@
 # RDD Implementation Roadmap
 
-**Status:** Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ + Phase 4 ✅ + Phase 4.5 ✅ + Phase 5 ✅ + Phase 5.1 ✅ | All Core Phases Complete
+**Status:** Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ + Phase 4 ✅ + Phase 4.5 ✅ + Phase 5 ✅ + Phase 5.1 ✅ + Phase 5.2 ✅ | Real-Time Chat Complete
 
 Last updated: 2026-05-30
 
@@ -17,6 +17,7 @@ Last updated: 2026-05-30
 | 4.5 | API Security Layer | ✅ Complete | CORS, Helmet, API Key auth, rate limiting |
 | 5 | UI Layer | ✅ Complete | React + Vite dashboard, chat interface, API integration |
 | 5.1 | GET /cases Endpoint | ✅ Complete | List conversations endpoint, Dashboard case selection UI |
+| 5.2 | WebSocket Real-Time Chat | ✅ Complete | Token streaming, socket.io, real-time message rendering |
 
 ---
 
@@ -254,6 +255,52 @@ Last updated: 2026-05-30
 - Users see list of active cases on Dashboard load
 - Click to select case instead of typing causa_id
 - Fallback: Manual input still available
+
+---
+
+## Phase 5.2: WebSocket Real-Time Chat ✅
+
+**What was built:**
+- `src/agent/claude-agent.ts` — Added `chatStream()` method with token streaming via `messages.stream()`
+- `src/api/socket-handler.ts` — Socket.io event handlers (join_case, send_message, leave_case)
+- `src/index.ts` — Refactored to `http.createServer(app)` + attach SocketIOServer
+- `src/types/agent.ts` — Socket event interfaces (SocketJoinCasePayload, etc.)
+- `ui/src/services/socket.ts` — Singleton socket.io-client with lifecycle management
+- `ui/src/types/socket.ts` — Frontend socket event interfaces (duplicate types for client)
+- `ui/src/components/ChatWindow.tsx` — Replaced HTTP sendMessage with socket.emit + streaming bubble
+- `ui/vite.config.ts` — Added `/socket.io` proxy with `ws: true`
+- `tests/unit/socket-handler.test.ts` — 11 tests covering all handlers, error cases
+
+**Key decisions:**
+- **D36:** socket.io v4 (not raw ws) — auto-reconnect, rooms, fallback to polling
+- **D37:** Streaming via `messages.stream()` — token-by-token feedback vs full response
+- **D38:** Socket auth via `join_case` with same API_KEY as HTTP auth
+- **D39:** processingMap guard — prevents concurrent send_message from same socket
+- **D40:** socket.connected check on token callback — safe disconnect handling
+
+**Socket Protocol:**
+- Client: `join_case { causaId, apiKey }` → Server validates, socket joins room
+- Client: `send_message { causaId, message }` → Server calls `chatStream()`, emits tokens
+- Server: `message_token { token }` × N → incremental text bubbles
+- Server: `message_complete { assistantMessage, intent, shouldSyncSheets, timestamp }` → finalize
+- Server: `error { code, message }` → auth_failed, not_in_room, validation_error, stream_error
+
+**Test status:** ✅ 112 tests passing (11 new socket tests + 101 existing)
+
+**Commits:**
+- 2036f6f: feat: Phase 5.2 WebSocket Real-Time Chat
+
+**Backward Compatibility:**
+- All 101 existing tests continue to pass
+- `chat()` method and `POST /agent/chat` endpoint untouched
+- HTTP sendMessage() still available as fallback
+- Tests import handlers directly, never `src/index.ts` — safe refactor
+
+**User Experience:**
+- Messages no longer wait for full response — tokens appear incrementally
+- No polling needed — real-time streaming via WebSocket
+- Typing effect: user sees Claude's response as it's generated
+- No page refresh required
 
 ---
 
