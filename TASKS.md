@@ -1,6 +1,6 @@
 # RDD Implementation Roadmap
 
-**Status:** Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ + Phase 4 ✅ | Phase 5 (⏳ Pending)
+**Status:** Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ + Phase 4 ✅ + Phase 4.5 ✅ | Phase 5 (⏳ Pending)
 
 Last updated: 2026-05-30
 
@@ -14,6 +14,7 @@ Last updated: 2026-05-30
 | 2 | Webhook Listener | ✅ Complete | POST /webhook with HMAC validation, Google Sheets REGISTRO tab |
 | 3 | Agent + Database | ✅ Complete | Claude SDK multi-turn, SQLite conversation store |
 | 4 | Drive Integration | ✅ Complete | Google Drive folder management, 3-webhook lifecycle handlers |
+| 4.5 | API Security Layer | ✅ Complete | CORS, Helmet, API Key auth, rate limiting |
 | 5 | UI Layer | ⏳ Pending | Dashboard, conversation UI (may be external) |
 
 ---
@@ -160,6 +161,54 @@ Last updated: 2026-05-30
 - PDF attachment processing from WhatsApp (Phase 5)
 - Admin dashboard / UI (Phase 5)
 - Document search functionality (Phase 5)
+
+---
+
+## Phase 4.5: API Security Layer ✅
+
+**What was built:**
+- `src/middleware/auth.ts` — API Key authentication middleware
+  - `requireApiKey(req, res, next)` validates Authorization header with Bearer token
+  - Responds with 401 Unauthorized if missing/invalid
+- `src/middleware/rate-limit.ts` — Dual-tier rate limiting
+  - `webhookLimiter` — 100 requests/min for webhook endpoints
+  - `chatLimiter` — 30 requests/min for chat endpoints
+- Global Helmet middleware for HTTP security headers
+- CORS middleware with configurable allowed origins
+
+**Environment Variables Added:**
+- `UI_API_KEY` — API key for frontend (min 32 chars)
+- `ALLOWED_ORIGINS` — CSV of allowed CORS origins (default: http://localhost:3000)
+- `WEBHOOK_RATE_LIMIT` — Requests/min for webhooks (default: 100)
+- `CHAT_RATE_LIMIT` — Requests/min for chat (default: 30)
+
+**Middleware Integration:**
+- Global: Helmet → CORS → JSON parser → logger
+- Webhook routes: Rate limiter (no auth, HMAC validation unchanged)
+- Chat routes: API Key auth → Rate limiter
+
+**Key decisions:**
+- **D30:** API Key auth (not JWT) — simple for small internal team, no login UI needed
+- **D31:** Webhooks excluded from API Key auth — use HMAC-SHA256 validation (Domain Invariant)
+- **D32:** Helmet + CORS ordered before routes — security headers applied to all responses
+
+**Tests status:** ✅ 95 tests passing | 2 skipped (97 total)
+
+**New test files:**
+- `tests/unit/auth.test.ts` — 5 tests for API Key validation
+- `tests/unit/rate-limit.test.ts` — 2 tests for rate limiter exports
+
+**Updated test files:**
+- All existing test files updated with complete environment mocks (UI_API_KEY, ALLOWED_ORIGINS, rate limit vars)
+
+**Commits:**
+- 5e6fd4b: feat: Phase 4.5 API Security Layer - CORS, Helmet, API Key Auth, Rate Limiting
+
+**Purpose:**
+- Enables Phase 5 UI to call backend securely from different origin
+- Protects endpoints from abuse (rate limiting)
+- Adds HTTP security headers (Helmet)
+- Validates frontend requests with API Key
 
 ---
 
