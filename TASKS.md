@@ -1,8 +1,8 @@
 # RDD Implementation Roadmap
 
-**Status:** Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ + Phase 4 ✅ + Phase 4.5 ✅ + Phase 5 ✅ + Phase 5.1 ✅ + Phase 5.2 ✅ + Phase 5.3 ✅ | Production Ready
+**Status:** Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ + Phase 4 ✅ + Phase 4.5 ✅ + Phase 5 ✅ + Phase 5.1 ✅ + Phase 5.2 ✅ + Phase 5.3 ✅ + Phase 5.4 ✅ | Production Ready
 
-Last updated: 2026-05-30 (8:10 PM GMT-4)
+Last updated: 2026-05-31 (8:35 PM GMT-4)
 
 ---
 
@@ -18,6 +18,8 @@ Last updated: 2026-05-30 (8:10 PM GMT-4)
 | 5 | UI Layer | ✅ Complete | React + Vite dashboard, chat interface, API integration |
 | 5.1 | GET /cases Endpoint | ✅ Complete | List conversations endpoint, Dashboard case selection UI |
 | 5.2 | WebSocket Real-Time Chat | ✅ Complete | Token streaming, socket.io, real-time message rendering |
+| 5.3 | Supabase Migration | ✅ Complete | SQLite → PostgreSQL, message persistence, timing-safe auth |
+| 5.4 | Advanced Search UI | ✅ Complete | Hardcoded case states, colored badges, filter param tests |
 
 ---
 
@@ -368,6 +370,33 @@ Last updated: 2026-05-30 (8:10 PM GMT-4)
 - Timing attack vulnerability and mitigation
 
 **Next Phase:** Phase 5.4 (Advanced Search UI) — Dashboard search by client name, RUT, tribunal, case state
+
+---
+
+## Phase 5.4: Advanced Search UI ✅
+
+**What was built:**
+- `ui/src/components/Dashboard.tsx` — CASE_STATES constant (hardcoded all 5 states), getCaseStateStyle helper, colored case state badges
+- `tests/unit/cases.test.ts` — 6 new filter param forwarding tests (q, tribunal, etapa, case_state, from/to, limit/offset)
+
+**Key decisions:**
+- D11: Hardcode CASE_STATES instead of deriving from loaded data (see PROGRESS.md)
+- D12: Add color-coded badges for case states (see PROGRESS.md)
+
+**Test status:** ✅ 112/112 passing (6 new tests added)
+
+**TypeScript:** Zero errors
+
+**Commits:**
+- 6439066: Phase 5.4 - Advanced Search UI completion
+
+**Learnings captured:**
+- See PROGRESS.md L13-L15 for full context
+- Why hardcoding filter options is better than deriving from data
+- Importance of test coverage for API param forwarding
+- UI/UX improvements for case state visibility
+
+**Status:** Production ready. All search, filter, and sort functionality fully tested and implemented.
 
 ---
 

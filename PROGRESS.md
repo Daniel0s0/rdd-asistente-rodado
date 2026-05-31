@@ -4,6 +4,57 @@ This file captures major decisions, learnings, and blockers as we build RDD. Upd
 
 ---
 
+## May 31, 2026 — Phase 5.4 Advanced Search UI Completion
+
+### Learnings
+
+**L13: Phase 5.3 already built most of Phase 5.4 scope**
+- Finding: The Supabase migration in Phase 5.3 included backend search filters (q, tribunal, etapa, case_state, from, to, limit, offset)
+- The Dashboard component already had search bar, tribunal dropdown, and etapa dropdown implemented
+- Remaining work: Fix hardcoded estado dropdown (was deriving from loaded data), add colored case state badges, add missing test coverage
+
+**L14: Avoid deriving filter options from loaded data**
+- Problem: `uniqueStates = Array.from(new Set(cases...))` only shows states present in the current page
+- If a page has only 'activo' cases, 'desistido' and 'caducado' never appear in the dropdown
+- Solution: Hardcode known states (activo, acuerdo, archivado, desistido, caducado) as a constant
+- Future: For dynamic filter options, use a separate endpoint or pre-load all options once at startup
+
+**L15: Test coverage for API param forwarding is critical**
+- Discovery: The handler was forwarding all query params correctly, but tests didn't verify it
+- Added 6 new tests covering: q, tribunal, etapa, case_state, from/to, limit/offset param forwarding
+- Result: 112/112 tests passing (6 new tests added to the 106 pre-existing)
+
+### Decisions Made
+
+**D11: Hardcode CASE_STATES instead of deriving from loaded data**
+- Chose: Constant array `[{value: 'activo', label: 'Activo'}, ...]`
+- Reason: Ensures all 5 case states always appear in dropdown regardless of loaded data
+- Trade-off: If new case states are added to DB, must update constant manually
+- Impact: Estado dropdown now always shows all possible states
+
+**D12: Add getCaseStateStyle helper for color-coded badges**
+- Chose: Helper function returning {bg, text, label} per state
+- Reason: Improves UX visibility of case state at a glance
+- Colors: activo=green, acuerdo=blue, archivado=gray, desistido=orange, caducado=red
+- Impact: Case cards now have visual state indicators
+
+### Test Status
+
+**Before Phase 5.4:** 106/106 tests passing  
+**After Phase 5.4:** 112/112 tests passing (+6 new tests)
+
+New tests:
+- forwards q param to listConversations
+- forwards tribunal param to listConversations
+- forwards etapa param to listConversations
+- forwards case_state param to listConversations
+- forwards from and to date params to listConversations
+- forwards limit and offset params to listConversations
+
+All passing. TypeScript: zero errors.
+
+---
+
 ## May 30, 2026 — Phase 5.3 Test Infrastructure Refactored
 
 ### Learnings
