@@ -332,6 +332,34 @@ describe('Database CRUD Operations', () => {
       expect(mockSupabaseClient.from).toHaveBeenCalledWith('conversations');
       expect(result.closed_at).not.toBeNull();
     });
+
+    it('createSimpleConversation creates conversation without case data', async () => {
+      const result = await models.createSimpleConversation('__portfolio__');
+
+      expect(mockSupabaseClient.from).toHaveBeenCalledWith('conversations');
+      expect(result.causa_id).toBe('__portfolio__');
+      expect(result.case_state).toBe('activo');
+      // Verify that case-specific fields are undefined/null
+      expect(result.cliente_nombre).toBeUndefined();
+      expect(result.demandado).toBeUndefined();
+    });
+
+    it('createSimpleConversation inserts minimal row with no case-specific fields', async () => {
+      // Verify structure: should only have id, causa_id, and basic fields
+      const result = await models.createSimpleConversation('__portfolio__');
+
+      // Check that the minimal structure is correct
+      expect(result).toHaveProperty('id');
+      expect(result).toHaveProperty('causa_id', '__portfolio__');
+      expect(result).toHaveProperty('case_state', 'activo');
+      expect(result).toHaveProperty('message_count', 0);
+
+      // Verify no case-specific fields
+      expect(result.cliente_nombre).toBeUndefined();
+      expect(result.demandado).toBeUndefined();
+      expect(result.tribunal).toBeUndefined();
+      expect(result.rit).toBeUndefined();
+    });
   });
 
   // ─── Message CRUD ──────────────────────────────────────────────────────────

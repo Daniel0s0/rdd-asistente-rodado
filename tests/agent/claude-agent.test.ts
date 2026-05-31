@@ -72,6 +72,14 @@ vi.mock('@anthropic-ai/sdk', () => {
   return { Anthropic };
 });
 
+// ─── Mock @database/analytics-queries for portfolioChat tests ─────────────────
+vi.mock('@database/analytics-queries', () => ({
+  getCartKPI: vi.fn(),
+  getIncomeData: vi.fn(),
+  getAcuerdosStatus: vi.fn(),
+  getCaseResults: vi.fn(),
+}));
+
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 import { getDb } from '@database/supabase';
 import { Anthropic } from '@anthropic-ai/sdk';

@@ -47,6 +47,7 @@ vi.mock('@agent/claude-agent', () => {
 
   const claudeAgent = {
     chat: vi.fn(),
+    portfolioChat: vi.fn(),
   };
 
   return { claudeAgent, ValidationError, ClaudeAPIError, TemporaryError };
@@ -80,7 +81,7 @@ vi.mock('@config/env', () => ({
   }),
 }));
 
-import { agentChatHandler } from '@api/agent';
+import { agentChatHandler, portfolioChatHandler } from '@api/agent';
 import { claudeAgent, ValidationError, ClaudeAPIError, TemporaryError } from '@agent/claude-agent';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -103,6 +104,13 @@ const MOCK_AGENT_RESPONSE = {
   flags: [],
   shouldSyncSheets: true,
   sheetsSyncData: { action: 'UPDATE' as const, fields: { intent: 'acuerdo', monto: 1800000 } },
+};
+
+/** Canonical PortfolioAgentResponse returned by the mock. */
+const MOCK_PORTFOLIO_RESPONSE = {
+  conversationId: '00000000-0000-0000-0000-000000000002',
+  messageId: '00000000-0000-0000-0000-000000000003',
+  assistantMessage: 'Cobrado este mes: $500.000. Acuerdos activos: 5. Cuotas vencidas: 1.',
 };
 
 // ─── Test Suite ───────────────────────────────────────────────────────────────
@@ -256,5 +264,167 @@ describe('POST /agent/chat', () => {
     expect(response.status).toBe(500);
     expect(response.body.success).toBe(false);
     expect(response.body.error).toBe('internal_error');
+  });
+});
+
+// ─── Portfolio Chat Tests ──────────────────────────────────────────────────────
+
+describe('POST /agent/portfolio-chat', () => {
+  let app: Application;
+
+  function buildPortfolioApp(): Application {
+    const app = express();
+    app.use(express.json());
+    app.post('/agent/portfolio-chat', portfolioChatHandler);
+    return app;
+  }
+
+  beforeEach(() => {
+    app = buildPortfolioApp();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  // ── Happy path ────────────────────────────────────────────────────────────
+
+  it('retorna 200 con PortfolioAgentResponse cuando request es válido', async () => {
+    vi.mocked(claudeAgent.portfolioChat).mockResolvedValue(MOCK_PORTFOLIO_RESPONSE);
+
+    const response = await request(app)
+      .post('/agent/portfolio-chat')
+      .send({ message: '¿Cuánto cobré este mes?' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data).toBeDefined();
+    expect(response.body.timestamp).toBeDefined();
+    expect(vi.mocked(claudeAgent.portfolioChat)).toHaveBeenCalledWith(
+      '¿Cuánto cobré este mes?',
+      undefined
+    );
+  });
+
+  it('retorna 200 cuando se pasa conversation_id UUID válido', async () => {
+    vi.mocked(claudeAgent.portfolioChat).mockResolvedValue(MOCK_PORTFOLIO_RESPONSE);
+    const testConversationId = '00000000-0000-0000-0000-000000000001';
+
+    const response = await request(app)
+      .post('/agent/portfolio-chat')
+      .send({ message: '¿Y los acuerdos vencidos?', conversation_id: testConversationId })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(vi.mocked(claudeAgent.portfolioChat)).toHaveBeenCalledWith(
+      '¿Y los acuerdos vencidos?',
+      testConversationId
+    );
+  });
+
+  it('respuesta contiene los 3 campos requeridos: conversationId, messageId, assistantMessage', async () => {
+    vi.mocked(claudeAgent.portfolioChat).mockResolvedValue(MOCK_PORTFOLIO_RESPONSE);
+
+    const response = await request(app)
+      .post('/agent/portfolio-chat')
+      .send({ message: '¿Cuál es el estado de la cartera?' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(200);
+    const { data } = response.body;
+    expect(data.conversationId).toBeDefined();
+    expect(data.messageId).toBeDefined();
+    expect(data.assistantMessage).toBeDefined();
+    expect(data.conversationId).toBe(MOCK_PORTFOLIO_RESPONSE.conversationId);
+    expect(data.messageId).toBe(MOCK_PORTFOLIO_RESPONSE.messageId);
+    expect(data.assistantMessage).toBe(MOCK_PORTFOLIO_RESPONSE.assistantMessage);
+  });
+
+  // ── Validation errors (400) ───────────────────────────────────────────────
+
+  it('retorna 400 cuando falta message', async () => {
+    const response = await request(app)
+      .post('/agent/portfolio-chat')
+      .send({})
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body.success).toBe(false);
+    expect(response.body.error).toBe('validation_error');
+    expect(vi.mocked(claudeAgent.portfolioChat)).not.toHaveBeenCalled();
+  });
+
+  it('retorna 400 cuando message está vacío', async () => {
+    const response = await request(app)
+      .post('/agent/portfolio-chat')
+      .send({ message: '' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body.success).toBe(false);
+    expect(response.body.error).toBe('validation_error');
+    expect(vi.mocked(claudeAgent.portfolioChat)).not.toHaveBeenCalled();
+  });
+
+  it('retorna 400 cuando conversation_id inválido (no-UUID)', async () => {
+    const response = await request(app)
+      .post('/agent/portfolio-chat')
+      .send({ message: '¿Cuánto?', conversation_id: 'not-a-uuid' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body.success).toBe(false);
+    expect(response.body.error).toBe('validation_error');
+    expect(vi.mocked(claudeAgent.portfolioChat)).not.toHaveBeenCalled();
+  });
+
+  // ── Error propagation from agent ──────────────────────────────────────────
+
+  it('retorna 500 con claude_api_error cuando ClaudeAPIError es lanzado', async () => {
+    vi.mocked(claudeAgent.portfolioChat).mockRejectedValue(
+      new ClaudeAPIError('Claude API auth error (status 401): Unauthorized')
+    );
+
+    const response = await request(app)
+      .post('/agent/portfolio-chat')
+      .send({ message: '¿Cuánto cobré?' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(500);
+    expect(response.body.success).toBe(false);
+    expect(response.body.error).toBe('claude_api_error');
+  });
+
+  it('retorna 400 con validation_error cuando ValidationError es lanzado', async () => {
+    vi.mocked(claudeAgent.portfolioChat).mockRejectedValue(
+      new ValidationError('Failed to create portfolio conversation')
+    );
+
+    const response = await request(app)
+      .post('/agent/portfolio-chat')
+      .send({ message: '¿Cuánto cobré?' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body.success).toBe(false);
+    expect(response.body.error).toBe('validation_error');
+  });
+
+  it('retorna 503 con temporary_error cuando TemporaryError es lanzado', async () => {
+    vi.mocked(claudeAgent.portfolioChat).mockRejectedValue(
+      new TemporaryError('Claude API temporary error (status 429): Rate limited')
+    );
+
+    const response = await request(app)
+      .post('/agent/portfolio-chat')
+      .send({ message: '¿Cuánto cobré?' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(503);
+    expect(response.body.success).toBe(false);
+    expect(response.body.error).toBe('temporary_error');
   });
 });
