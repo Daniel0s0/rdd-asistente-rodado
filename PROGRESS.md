@@ -4,7 +4,10 @@ This file captures major decisions, learnings, and blockers as we build RDD. Upd
 
 ---
 
-## May 31, 2026 — Phase 6.5 Portfolio Chat Completion
+## May 31, 2026 — Phase 6.5 Portfolio Chat Completion ✅ PUSHED
+
+### Status
+**✅ COMPLETE & PUSHED** — Commit `dd0c0c6` pushed to main. Verified by Code Solution Validator (YELLOW approval).
 
 ### Decisions Made
 
@@ -33,7 +36,39 @@ This file captures major decisions, learnings, and blockers as we build RDD. Upd
 
 TypeScript build: zero errors  
 Backend: portfolioChat method + portfolioChatHandler endpoint + route registration complete  
-Frontend: App.tsx (3-view state machine), Cartera.tsx (onOpenChat button), PortfolioChatWindow component complete
+Frontend: App.tsx (4-view state machine), Cartera.tsx (onOpenChat button), PortfolioChatWindow component complete
+
+### Technical Debt (Documented by Validator)
+
+**TD1: No automated tests for portfolioChat endpoint**
+- Status: Known gap. Single-user system + manual verification passed.
+- Fix needed: Add tests to `tests/api/agent.test.ts` for POST /agent/portfolio-chat (200, 400, multi-turn)
+- Fix needed: Add tests to `tests/agent/claude-agent.test.ts` for portfolioChat() method
+- Fix needed: Add tests to `tests/database/models.test.ts` for createSimpleConversation()
+- Timeline: Next session (does not block production for single-user)
+
+**TD2: Race condition on `__portfolio__` conversation creation**
+- Scenario: Two simultaneous requests when __portfolio__ doesn't exist → both try CREATE → duplicate key error → second request gets 400
+- Severity: Low (single-user system)
+- Fix suggested: In catch block, perform GET recovery before relaunching error
+- Timeline: Post-6.5 optimization (not critical)
+
+**TD3: Duplicate key detection uses string matching**
+- Current: `error.message.includes('duplicate key')` 
+- Better: `error.code === '23505'` (PostgreSQL unique_violation)
+- Status: Inherited bug (not introduced in 6.5)
+- Timeline: Code cleanup task
+
+### Commits
+
+```
+dd0c0c6: fix: Phase 6.5 Portfolio Chat - Support creating synthetic __portfolio__ conversation without case data
+  Changes:
+  - src/database/models.ts: Added createSimpleConversation() for synthetic conversations
+  - src/agent/claude-agent.ts: Fixed portfolioChat() control flow (null check vs try/catch)
+  - Frontend: PortfolioChatWindow, Cartera button, App routing all in place
+  - Result: Endpoint responds with Rodado answers using real analytics data
+```
 
 ### Learnings
 
@@ -54,6 +89,12 @@ Frontend: App.tsx (3-view state machine), Cartera.tsx (onOpenChat button), Portf
 - Each view has handler: `handleSelectCausa`, `handleBack`, `handleOpenPortfolioChat`
 - Can add more views (e.g., 6.5 → analytics-drill-down) without refactor
 - Impact: Navigation architecture is solid for Phases 7+
+
+**L24: Validator catches architectural mismatches before code review**
+- Issue: createConversation() required case fields that don't exist for synthetic conversations
+- Root cause: Function designed for webhook data (with case context), not generic conversations
+- Solution: Created createSimpleConversation() for schema-compatible inserts
+- Impact: Forces thinking about generality early; code reusability improved
 
 ---
 
