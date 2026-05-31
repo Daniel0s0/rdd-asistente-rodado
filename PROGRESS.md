@@ -98,6 +98,15 @@ dd0c0c6: fix: Phase 6.5 Portfolio Chat - Support creating synthetic __portfolio_
 - Can add more views (e.g., 6.5 → analytics-drill-down) without refactor
 - Impact: Navigation architecture is solid for Phases 7+
 
+**L24: Analytics queries require explicit date filters (no implicit scoping)**
+- Bug: getCartKPI() had two identical queries without date filters
+  - `totalCobradoAnio` summed ALL registros (no year filter)
+  - `cobradoEsteMes` summed ALL registros (no month filter)
+  - Result: Portfolio KPI showed $0 or incorrect totals
+- Root cause: Copy-paste error; both queries lacked `.gte('fecha', ...)` filters
+- Fix: Added yearStart/yearEnd and monthStart/monthEnd filters
+- Impact: Analytics endpoints now return correct aggregates; similar review needed for getIncomeData() (has filters) and getAcuerdosStatus() (is filtered)
+
 **L24: Validator catches architectural mismatches before code review**
 - Issue: createConversation() required case fields that don't exist for synthetic conversations
 - Root cause: Function designed for webhook data (with case context), not generic conversations
