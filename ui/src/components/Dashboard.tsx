@@ -32,7 +32,7 @@ export default function Dashboard({ onSelectCausa }: DashboardProps) {
   const [filterTribunal, setFilterTribunal] = useState('');
   const [filterEtapa, setFilterEtapa] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
-  const searchTimeoutRef = useRef<NodeJS.Timeout>();
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const loadCases = async (q?: string, tribunal?: string, etapa?: string, caseState?: string) => {
     try {

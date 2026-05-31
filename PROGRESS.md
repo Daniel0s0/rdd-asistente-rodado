@@ -4,6 +4,124 @@ This file captures major decisions, learnings, and blockers as we build RDD. Upd
 
 ---
 
+## May 31, 2026 — Phase 6.1 & 6.2 Supabase Financial Data Model & Agent Integration
+
+### Decisions Made
+
+**D13: Supabase as authoritative source for ALL new financial data (Fase 6 onwards)**
+- Chose: Supabase tables (acuerdos, cuotas, registros) as source of truth for structured financial records
+- Reason: Google Sheets becomes legacy/export only; eliminates duplication between chat registrations and Sheets sync
+- Trade-off: Historical data (130 existing cases) remains in Sheets; migration not required
+- Impact: Chat-based acuerdos/pagos write directly to Supabase; webhook initial registration still syncs to Sheets
+
+**D14: Three-table financial model for agreements + installments**
+- Chose: acuerdos (agreement header) + cuotas (individual installment rows) + registros (loose cobranza/sentencia)
+- Reason: Normalized model allows tracking per-cuota payment status, handles partial payments correctly
+- Trade-off: More complex queries (JOIN acuerdos→cuotas) but cleaner data integrity
+- Impact: Analytics can answer "which cuotas are overdue" precisely; cuota estado tracks: pendiente/pagada/vencida/pagada_con_retraso
+
+**D15: Cuota estado derived partially in DB + queries**
+- Chose: fecha_pago + estado columns; estado auto-updated when payment marked as late (>5 days)
+- Reason: Performance: estado ready for sorting/filtering; fecha_pago is immutable audit trail
+- Trade-off: Query logic must handle "vencida" derivation (fecha_vencimiento < TODAY AND fecha_pago IS NULL)
+- Impact: Analytics faster; audit trail preserved
+
+### Test Status
+
+**Before Phase 6.1-6.2:** 112/112 tests passing  
+**After Phase 6.1-6.2:** 112/112 tests passing (no new tests added yet; Fase 6.3 will test analytics endpoints)
+
+TypeScript build: zero errors  
+Supabase tables: acuerdos, cuotas, registros created + GRANTs executed
+
+### Learnings
+
+**L16: Calculated cuota dates simplify agreement registration**
+- Feature: calculateCuotaDates() generates array of vencimiento dates from fecha_primer_pago + cuotasTotal
+- Handles month wrapping automatically (Jan 30 + 2 months = Mar 30, not Feb 28 overflow)
+- Batch createCuotas() inserts all rows atomically → if one fails, none saved
+- Impact: Agreedo registrations are fast + atomic
+
+**L17: ±5 day tolerance on payment dates requires explicit tracking**
+- Spec requires: Cuotas paid within 5 days of vencimiento = "pagada"; >5 days = "pagada_con_retraso"
+- Solution: markCuotaPagada() calculates diffDays = fechaPago - fechaVencimiento; sets estado accordingly
+- No background job needed; estado determined at write time
+- Impact: No cron jobs required; analytics queries filter on estado='pagada_con_retraso' for aging reports
+
+### Files Created/Modified
+
+**Created:**
+- src/database/analytics-queries.ts — Query helpers for portfolio KPIs
+- src/api/analytics.ts — 4 endpoints (cartera, ingresos, acuerdos, resultados)
+
+**Modified:**
+- src/database/models.ts — Added createAcuerdo, createCuotas, createRegistro, markCuotaPagada, getAcuerdosActivos
+- src/agent/claude-agent.ts — Added executeSuperparserAction() to write acuerdos/pagos to Supabase
+- src/index.ts — Registered /analytics/* routes with requireApiKey middleware
+
+---
+
+## May 31, 2026 — Phase 6.3 & 6.4 Analytics API + Portfolio UI Completion
+
+### Decisions Made
+
+**D16: Recharts for lightweight chart library**
+- Chose: Recharts instead of Chart.js or Apache ECharts
+- Reason: React-native, works with TypeScript strict mode, minimal setup, responsive containers
+- Trade-off: Not as feature-rich as ECharts but sufficient for KPI/income charts
+- Impact: Installed recharts as npm dependency; components use BarChart + Tooltip
+
+**D17: Tabbed navigation for Cartera in App.tsx**
+- Chose: Top-level tabs (Causas | Cartera) instead of nested within Dashboard
+- Reason: Portfolio view is distinct from individual case dashboard; users need quick toggle
+- Trade-off: Requires refactoring App.tsx from conditional render to view state management
+- Impact: Clean separation; users can navigate between Causas list and Cartera analytics seamlessly
+
+### Test Status
+
+**Before Phase 6.3-6.4:** 112/112 tests passing  
+**After Phase 6.3-6.4:** 112/112 tests passing (no new backend tests; UI tests handled separately via npm run build)
+
+TypeScript build (backend): zero errors  
+TypeScript build (frontend): zero errors (after fixing Tooltip type + useRef type)
+
+### Learnings
+
+**L18: Recharts Tooltip formatter requires any cast for strict TypeScript**
+- Problem: Tooltip formatter type signature expects `Formatter<ValueType, NameType>` with optional undefined
+- Solution: Cast value to `any` then to `number` in formatter function
+- Impact: Avoids type complications with recharts generic types in strict mode
+
+**L19: App-level view state better than nested conditionals**
+- Finding: Initial App.tsx had binary conditional (chat vs dashboard)
+- Expansion needed (causas, cartera, chat) → required state machine refactoring
+- Better pattern: Single `view` state + handlers that set view before navigating
+- Impact: Clean handler flow; no callback chains; easy to add new views (e.g., "portfolio-chat" in Phase 6.5)
+
+**L20: Fixed pre-existing Dashboard.tsx TypeScript issue with useRef**
+- Discovery: Dashboard had `useRef<NodeJS.Timeout>()` which fails in strict TypeScript
+- Solution: Changed to `useRef<ReturnType<typeof setTimeout> | undefined>(undefined)`
+- Impact: Fixed compilation; incidental cleanup while working on UI
+
+### Files Created/Modified
+
+**Created:**
+- ui/src/components/Cartera.tsx — Main portfolio view orchestrator with tabs
+- ui/src/components/cartera/KPICards.tsx — 5 KPI cards (cobrado año, mes, acuerdos, vencidas, % resultados)
+- ui/src/components/cartera/IngresosTab.tsx — Stacked bar chart by month + % breakdown by source
+- ui/src/components/cartera/AcuerdosTab.tsx — Table view of agreement status per causa
+- ui/src/components/cartera/ResultadosTab.tsx — Case result statistics + distribution chart
+
+**Modified:**
+- ui/src/services/api.ts — Added 4 analytics types (CarteraKPI, IncomeData, AcuerdoStatus, CaseResults) + functions (getCartera, getIngresos, getAcuerdos, getResultados)
+- ui/src/App.tsx — Refactored to support 3-view navigation (causas, cartera, chat) + tab headers
+- ui/src/components/Dashboard.tsx — Fixed useRef type to ReturnType<typeof setTimeout>
+
+**Installed:**
+- recharts@latest (41 packages, now 611 total)
+
+---
+
 ## May 31, 2026 — Phase 5.4 Advanced Search UI Completion
 
 ### Learnings

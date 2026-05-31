@@ -1,0 +1,91 @@
+<h2>Analytics UI — ¿Cómo organizar la vista de cartera?</h2>
+<p class="subtitle">Elige el layout que mejor representa cómo quieres ver tu cartera</p>
+
+<div class="cards" style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-top:1.5rem;">
+
+  <div class="card" data-choice="a" onclick="toggleSelect(this)" style="cursor:pointer;">
+    <div class="card-image" style="background:#0f172a;padding:1rem;border-radius:8px 8px 0 0;">
+      <!-- KPI row -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:8px;">
+        <div style="background:#1e293b;border-radius:4px;padding:6px 4px;text-align:center;">
+          <div style="font-size:8px;color:#64748b;">COBRADO 2026</div>
+          <div style="font-size:11px;color:#22c55e;font-weight:bold;">$45.2M</div>
+        </div>
+        <div style="background:#1e293b;border-radius:4px;padding:6px 4px;text-align:center;">
+          <div style="font-size:8px;color:#64748b;">ESTE MES</div>
+          <div style="font-size:11px;color:#38bdf8;font-weight:bold;">$3.8M</div>
+        </div>
+        <div style="background:#1e293b;border-radius:4px;padding:6px 4px;text-align:center;">
+          <div style="font-size:8px;color:#64748b;">ACUERDOS</div>
+          <div style="font-size:11px;color:#a78bfa;font-weight:bold;">8 activos</div>
+        </div>
+        <div style="background:#1e293b;border-radius:4px;padding:6px 4px;text-align:center;">
+          <div style="font-size:8px;color:#64748b;">RESULTADO</div>
+          <div style="font-size:11px;color:#fbbf24;font-weight:bold;">67%</div>
+        </div>
+      </div>
+      <!-- Chart area -->
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:6px;">
+        <div style="background:#1e293b;border-radius:4px;padding:8px;">
+          <div style="font-size:7px;color:#64748b;margin-bottom:6px;">INGRESOS POR MES</div>
+          <div style="display:flex;align-items:flex-end;gap:3px;height:40px;">
+            <div style="flex:1;background:#334155;border-radius:2px 2px 0 0;height:50%"></div>
+            <div style="flex:1;background:#334155;border-radius:2px 2px 0 0;height:65%"></div>
+            <div style="flex:1;background:#334155;border-radius:2px 2px 0 0;height:45%"></div>
+            <div style="flex:1;background:#334155;border-radius:2px 2px 0 0;height:80%"></div>
+            <div style="flex:1;background:#22c55e;border-radius:2px 2px 0 0;height:70%"></div>
+          </div>
+        </div>
+        <div style="background:#1e293b;border-radius:4px;padding:8px;">
+          <div style="font-size:7px;color:#64748b;margin-bottom:6px;">POR FUENTE</div>
+          <div style="font-size:7px;color:#94a3b8;line-height:1.8;">
+            <span style="color:#22c55e;">■</span> Cobranza 40%<br>
+            <span style="color:#38bdf8;">■</span> Sentencia 35%<br>
+            <span style="color:#a78bfa;">■</span> Acuerdo 25%
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Dashboard único</h3>
+      <p>Tab "Cartera" con KPIs arriba, gráfico de barras mensual + donut de fuentes. Todo en una pantalla.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)" style="cursor:pointer;">
+    <div class="card-image" style="background:#0f172a;padding:1rem;border-radius:8px 8px 0 0;">
+      <!-- Tab nav -->
+      <div style="display:flex;gap:4px;margin-bottom:8px;">
+        <div style="background:#22c55e;color:#000;font-size:7px;padding:3px 6px;border-radius:3px;font-weight:bold;">Resumen</div>
+        <div style="background:#1e293b;color:#64748b;font-size:7px;padding:3px 6px;border-radius:3px;">Ingresos</div>
+        <div style="background:#1e293b;color:#64748b;font-size:7px;padding:3px 6px;border-radius:3px;">Acuerdos</div>
+        <div style="background:#1e293b;color:#64748b;font-size:7px;padding:3px 6px;border-radius:3px;">Causas</div>
+      </div>
+      <!-- Content area -->
+      <div style="background:#1e293b;border-radius:4px;padding:8px;">
+        <div style="font-size:7px;color:#64748b;margin-bottom:6px;">RESUMEN EJECUTIVO</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+          <div style="font-size:7px;color:#94a3b8;line-height:2;">
+            Total cobrado 2026<br>
+            Cobrado este mes<br>
+            Acuerdos activos<br>
+            Cuotas vencidas
+          </div>
+          <div style="font-size:7px;line-height:2;">
+            <span style="color:#22c55e;">$45.200.000</span><br>
+            <span style="color:#38bdf8;">$3.800.000</span><br>
+            <span style="color:#a78bfa;">8 acuerdos</span><br>
+            <span style="color:#ef4444;">2 cuotas</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Tabs separados</h3>
+      <p>Cuatro tabs: Resumen / Ingresos / Acuerdos / Causas. Cada uno profundiza en su tema.</p>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:1.5rem;font-size:0.85rem;">Haz clic en la opción que prefieras, o cuéntame en el terminal qué cambiarías.</p>

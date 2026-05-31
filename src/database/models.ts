@@ -379,3 +379,194 @@ export async function getAuditTrailForCase(causaId: string): Promise<AuditLogEnt
   logger.debug({ causaId, conversationId, count: (auditData || []).length }, 'getAuditTrailForCase: entries returned');
   return (auditData || []) as AuditLogEntry[];
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Financial Data (Fase 6.2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AcuerdoRecord {
+  id: string;
+  conversation_id: string;
+  monto_total: number;
+  cuotas_total: number;
+  monto_por_cuota: number;
+  porcentaje_honorarios: number;
+  fecha_primer_pago: string;
+  estado: 'activo' | 'completado' | 'incumplido';
+  created_at: string;
+}
+
+export interface CuotaRecord {
+  id: string;
+  acuerdo_id: string;
+  numero: number;
+  monto: number;
+  fecha_vencimiento: string;
+  fecha_pago: string | null;
+  estado: 'pendiente' | 'pagada' | 'vencida' | 'pagada_con_retraso';
+  created_at: string;
+}
+
+export interface RegistroRecord {
+  id: string;
+  conversation_id: string;
+  tipo: 'cobranza' | 'sentencia' | 'gasto' | 'honorarios';
+  monto: number;
+  fecha: string;
+  notas: string | null;
+  created_at: string;
+}
+
+export async function createAcuerdo(data: {
+  conversationId: string;
+  montoTotal: number;
+  cuotasTotal: number;
+  montoPorCuota: number;
+  porcentajeHonorarios: number;
+  fechaPrimerPago: string;
+}): Promise<AcuerdoRecord> {
+  const db = getDb();
+  const acuerdoId = randomUUID();
+
+  const insert = {
+    id: acuerdoId,
+    conversation_id: data.conversationId,
+    monto_total: data.montoTotal,
+    cuotas_total: data.cuotasTotal,
+    monto_por_cuota: data.montoPorCuota,
+    porcentaje_honorarios: data.porcentajeHonorarios,
+    fecha_primer_pago: data.fechaPrimerPago,
+    estado: 'activo',
+  };
+
+  const { data: result, error } = await (db.from('acuerdos') as any).insert([insert]).select().single();
+
+  if (error) {
+    logger.error({ error: error.message, conversationId: data.conversationId }, 'createAcuerdo: database error');
+    throw error;
+  }
+
+  logger.debug({ acuerdoId, conversationId: data.conversationId }, 'Acuerdo created');
+  return result as AcuerdoRecord;
+}
+
+export async function createCuotas(acuerdoId: string, cuotas: Array<{ numero: number; monto: number; fechaVencimiento: string }>): Promise<CuotaRecord[]> {
+  const db = getDb();
+
+  const inserts = cuotas.map((cuota) => ({
+    id: randomUUID(),
+    acuerdo_id: acuerdoId,
+    numero: cuota.numero,
+    monto: cuota.monto,
+    fecha_vencimiento: cuota.fechaVencimiento,
+    estado: 'pendiente',
+  }));
+
+  const { data: result, error } = await (db.from('cuotas') as any).insert(inserts).select();
+
+  if (error) {
+    logger.error({ error: error.message, acuerdoId }, 'createCuotas: database error');
+    throw error;
+  }
+
+  logger.debug({ acuerdoId, count: (result || []).length }, 'Cuotas created');
+  return (result || []) as CuotaRecord[];
+}
+
+export async function createRegistro(data: {
+  conversationId: string;
+  tipo: 'cobranza' | 'sentencia' | 'gasto' | 'honorarios';
+  monto: number;
+  fecha: string;
+  notas?: string;
+}): Promise<RegistroRecord> {
+  const db = getDb();
+  const registroId = randomUUID();
+
+  const insert = {
+    id: registroId,
+    conversation_id: data.conversationId,
+    tipo: data.tipo,
+    monto: data.monto,
+    fecha: data.fecha,
+    notas: data.notas ?? null,
+  };
+
+  const { data: result, error } = await (db.from('registros') as any).insert([insert]).select().single();
+
+  if (error) {
+    logger.error({ error: error.message, conversationId: data.conversationId }, 'createRegistro: database error');
+    throw error;
+  }
+
+  logger.debug({ registroId, conversationId: data.conversationId }, 'Registro created');
+  return result as RegistroRecord;
+}
+
+export async function markCuotaPagada(
+  acuerdoId: string,
+  numeroCuota: number,
+  fechaPago: string
+): Promise<CuotaRecord | null> {
+  const db = getDb();
+
+  const { data: cuota, error: selectError } = await db
+    .from('cuotas')
+    .select('*')
+    .eq('acuerdo_id', acuerdoId)
+    .eq('numero', numeroCuota)
+    .single();
+
+  if (selectError && selectError.code !== 'PGRST116') {
+    logger.error({ error: selectError.message, acuerdoId, numeroCuota }, 'markCuotaPagada: select error');
+    throw selectError;
+  }
+
+  if (!cuota) {
+    logger.debug({ acuerdoId, numeroCuota }, 'markCuotaPagada: cuota not found');
+    return null;
+  }
+
+  const fechaPagoDate = new Date(fechaPago);
+  const fechaVencimientoDate = new Date((cuota as any).fecha_vencimiento);
+  const diffDays = Math.floor((fechaPagoDate.getTime() - fechaVencimientoDate.getTime()) / (1000 * 60 * 60 * 24));
+
+  const newEstado = diffDays > 5 ? 'pagada_con_retraso' : 'pagada';
+
+  const { data: result, error: updateError } = await (db
+    .from('cuotas') as any)
+    .update({
+      fecha_pago: fechaPago,
+      estado: newEstado,
+    })
+    .eq('id', (cuota as any).id)
+    .select()
+    .single();
+
+  if (updateError) {
+    logger.error({ error: updateError.message, acuerdoId, numeroCuota }, 'markCuotaPagada: update error');
+    throw updateError;
+  }
+
+  logger.debug({ acuerdoId, numeroCuota, estado: newEstado }, 'Cuota marked as paid');
+  return result as CuotaRecord;
+}
+
+export async function getAcuerdosActivos(conversationId: string): Promise<AcuerdoRecord[]> {
+  const db = getDb();
+
+  const { data, error } = await db
+    .from('acuerdos')
+    .select('*')
+    .eq('conversation_id', conversationId)
+    .eq('estado', 'activo')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    logger.error({ error: error.message, conversationId }, 'getAcuerdosActivos: database error');
+    throw error;
+  }
+
+  logger.debug({ conversationId, count: (data || []).length }, 'getAcuerdosActivos: rows returned');
+  return (data || []) as AcuerdoRecord[];
+}

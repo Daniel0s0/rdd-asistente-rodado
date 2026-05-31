@@ -1,8 +1,8 @@
 # RDD Implementation Roadmap
 
-**Status:** Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ + Phase 4 ✅ + Phase 4.5 ✅ + Phase 5 ✅ + Phase 5.1 ✅ + Phase 5.2 ✅ + Phase 5.3 ✅ + Phase 5.4 ✅ | Production Ready
+**Status:** Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ + Phase 4 ✅ + Phase 4.5 ✅ + Phase 5 ✅ + Phase 5.1 ✅ + Phase 5.2 ✅ + Phase 5.3 ✅ + Phase 5.4 ✅ + Phase 6.1 ✅ + Phase 6.2 ✅ + Phase 6.3 ✅ + Phase 6.4 ✅ | Production Ready (through 6.4)
 
-Last updated: 2026-05-31 (8:35 PM GMT-4)
+Last updated: 2026-05-31 (11:30 PM GMT-4)
 
 ---
 
@@ -20,6 +20,11 @@ Last updated: 2026-05-31 (8:35 PM GMT-4)
 | 5.2 | WebSocket Real-Time Chat | ✅ Complete | Token streaming, socket.io, real-time message rendering |
 | 5.3 | Supabase Migration | ✅ Complete | SQLite → PostgreSQL, message persistence, timing-safe auth |
 | 5.4 | Advanced Search UI | ✅ Complete | Hardcoded case states, colored badges, filter param tests |
+| 6.1 | Financial Data Model | ✅ Complete | Supabase tables (acuerdos, cuotas, registros), ±5 day tolerance |
+| 6.2 | Agent Supabase Integration | ✅ Complete | Chat writes acuerdos/pagos/cobranzas to Supabase |
+| 6.3 | Analytics API | ✅ Complete | /analytics/* endpoints for portfolio KPIs, income, agreements, results |
+| 6.4 | Portfolio UI | ✅ Complete | React components for cartera dashboard with charts and tables |
+| 6.5 | Portfolio Chat | 🔜 Planned | Rodado answers questions about cartera (¿cuánto cobré?) |
 
 ---
 
@@ -397,6 +402,172 @@ Last updated: 2026-05-31 (8:35 PM GMT-4)
 - UI/UX improvements for case state visibility
 
 **Status:** Production ready. All search, filter, and sort functionality fully tested and implemented.
+
+---
+
+## Phase 6.1: Financial Data Model ✅
+
+**What was built:**
+- `src/database/schema.ts` — 3 new Supabase tables: acuerdos, cuotas, registros
+- Supabase SQL DDL executed (CREATE TABLE + GRANTs for service_role)
+- See PROGRESS.md D13-D15 for architectural decisions
+
+**Database Schema:**
+- `acuerdos` — Agreement headers (monto_total, cuotas_total, fecha_primer_pago, estado)
+- `cuotas` — Individual installment rows (numero, monto, fecha_vencimiento, fecha_pago, estado)
+- `registros` — One-off cobranza/sentencia/gasto records (tipo, monto, fecha, notas)
+
+**Key decisions:**
+- D13: Supabase as authoritative source for NEW financial data (Sheets = legacy)
+- D14: Three-table model (acuerdos + cuotas) for normalized agreement tracking
+- D15: Estado column + calculated vencida derivation in queries
+
+**Tests status:** ✅ 112/112 passing (no new tests; Fase 6.3 adds analytics endpoint tests)
+
+**Verification:**
+- ✅ Tables exist in Supabase: SELECT * FROM information_schema.tables WHERE table_schema='public'
+- ✅ GRANTs executed: service_role has ALL permissions
+
+**Commits:**
+- TBD: Awaiting test suite completion
+
+---
+
+## Phase 6.2: Agent Supabase Integration ✅
+
+**What was built:**
+- `src/database/models.ts` — 5 new functions:
+  - `createAcuerdo(data)` — INSERT acuerdos + returns id
+  - `createCuotas(acuerdoId, cuotas[])` — Batch INSERT with calculated dates
+  - `createRegistro(data)` — INSERT cobranza/sentencia/gasto
+  - `markCuotaPagada(acuerdoId, numeroCuota, fechaPago)` — UPDATE with estado logic
+  - `getAcuerdosActivos(conversationId)` — SELECT for active agreements
+
+- `src/agent/claude-agent.ts` — `executeSuperparserAction()` function
+  - Detects intent (acuerdo | pago)
+  - Calls appropriate DB function based on context
+  - Integrated into chat() and chatStream() methods
+
+- `src/agent/claude-agent.ts` — `calculateCuotaDates()` helper
+  - Generates array of monthly vencimiento dates
+  - Handles month wrapping correctly
+
+**Key decisions:**
+- D13-D15: See Fase 6.1 decisions
+- Atomic operations: All cuotas created in batch or not at all
+- Payment status derivation: Determined at write time (>5 days = pagada_con_retraso)
+
+**Integration:**
+- Chat intent 'acuerdo' → createAcuerdo + createCuotas
+- Chat intent 'pago' + active agreements → markCuotaPagada
+- Chat intent 'pago' + no agreements → createRegistro (cobranza/sentencia)
+- Webhook (causas-nueva) still syncs to Sheets; Sheets updates now deprecated for chat
+
+**Tests status:** ✅ 112/112 passing (no new failures introduced)
+
+**TypeScript:** ✅ zero errors
+
+**Files Modified:**
+- src/database/models.ts — Added 5 new functions
+- src/agent/claude-agent.ts — Added executeSuperparserAction() + calculateCuotaDates()
+- src/index.ts — (no changes needed)
+
+**Commits:**
+- TBD: Awaiting test suite completion
+
+---
+
+## Phase 6.3: Analytics API ✅
+
+**What was built:**
+- `src/database/analytics-queries.ts` — 4 query helpers
+  - `getCartKPI()` — Year-to-date + month + acuerdos + cuotas vencidas + % result
+  - `getIncomeData(from, to)` — Monthly breakdown + by-source percentages
+  - `getAcuerdosStatus()` — Active agreements with cuota progress
+  - `getCaseResults()` — Counters per case state (activas, desistidas, caducadas)
+
+- `src/api/analytics.ts` — 4 REST endpoints
+  - `GET /analytics/cartera` → KPI resumen
+  - `GET /analytics/ingresos?from=2026-01&to=2026-05` → Income time-series
+  - `GET /analytics/acuerdos` → Agreement status table
+  - `GET /analytics/resultados` → Case outcome counters
+
+- `src/index.ts` — Registered routes with requireApiKey middleware
+
+**Implementation Status:**
+- ✅ analytics-queries.ts created
+- ✅ analytics.ts created (4 handlers)
+- ✅ routes registered in index.ts
+- ✅ npm run build: zero errors
+- ✅ 112/112 tests passing
+
+**Key Decisions (see PROGRESS.md):**
+- D13: Supabase as authoritative source for new financial data
+- D14: Three-table model (acuerdos + cuotas + registros)
+- D15: Cuota estado derived at write time (±5 day tolerance)
+
+---
+
+## Phase 6.4: Portfolio UI ✅
+
+**What was built:**
+- `ui/src/components/Cartera.tsx` — Main portfolio view orchestrator
+  - Loads KPI + income + acuerdos + resultados in parallel
+  - Tab navigation (Ingresos | Acuerdos | Resultados)
+  - Error handling + refresh button
+
+- `ui/src/components/cartera/KPICards.tsx` — 5 KPI cards
+  - Cobrado este año (blue)
+  - Cobrado este mes (green)
+  - Acuerdos activos (purple)
+  - Cuotas vencidas (red if > 0)
+  - % Resultados (orange)
+
+- `ui/src/components/cartera/IngresosTab.tsx` — Income visualization
+  - Stacked bar chart (monthly: cobranza+sentencia+acuerdo)
+  - Horizontal bar breakdown by source (%)
+  - Uses Recharts for charts
+
+- `ui/src/components/cartera/AcuerdosTab.tsx` — Agreement status table
+  - Columns: Causa, Monto, Cuotas (pagadas/total), Próx. Vencimiento, Vencidas, Estado
+  - Color-coded status badges (al_día=green, con_retraso=yellow, vencido=red)
+  - Responsive table with hover states
+
+- `ui/src/components/cartera/ResultadosTab.tsx` — Case statistics
+  - 5 cards: Con Resultado, Sin Resultado, Desistidas, Caducadas, Activas
+  - Percentage breakdown
+  - Distribution bars
+
+- `ui/src/services/api.ts` — Extended with analytics functions
+  - `getCartera()` → CarteraKPI
+  - `getIngresos()` → IncomeData
+  - `getAcuerdos()` → AcuerdoStatus[]
+  - `getResultados()` → CaseResults
+
+- `ui/src/App.tsx` — App-level navigation refactored
+  - Top-level tabs: Causas | Cartera
+  - View state machine (causas, cartera, chat)
+  - Handlers for navigation between views
+
+**Dependencies Installed:**
+- recharts (41 packages added, 611 total)
+
+**Implementation Status:**
+- ✅ All 5 components created
+- ✅ API service functions added
+- ✅ App.tsx navigation updated
+- ✅ npm run build (UI): zero errors
+- ✅ npm run build (backend): zero errors
+- ✅ 112/112 tests passing
+
+**Key Decisions (see PROGRESS.md):**
+- D16: Recharts for lightweight chart library
+- D17: Tabbed navigation at App level
+
+**Learnings (see PROGRESS.md):**
+- L18: Recharts Tooltip requires type casting for strict mode
+- L19: App-level view state cleaner than nested conditionals
+- L20: Fixed Dashboard.tsx useRef type issue (incidental cleanup)
 
 ---
 

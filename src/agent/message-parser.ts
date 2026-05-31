@@ -196,25 +196,23 @@ const MONTH_MAP: Record<string, number> = {
 /**
  * Extracts a date from the message and returns it as YYYY-MM-DD.
  * Supports ISO format (2026-06-30) and Spanish format (30 junio 2026 / 30 de junio de 2026).
- * Rejects dates in the past.
+ * Acepta fechas pasadas (RDD registra eventos históricos: pagos, cobros, acuerdos ya ocurridos).
  */
 function extractFecha(message: string): string | undefined {
   const now = new Date();
-  // Zero out time for date comparison
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tenYearsAgo = new Date(today.getFullYear() - 10, today.getMonth(), today.getDate());
+  const tenYearsAhead = new Date(today.getFullYear() + 10, today.getMonth(), today.getDate());
 
   // Pattern 1: ISO date — spec regex
   const isoMatch = message.match(/(\d{4})-(\d{2})-(\d{2})/);
   if (isoMatch) {
     const [, year, month, day] = isoMatch;
     const parsed = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-    if (!isNaN(parsed.getTime()) && parsed >= today) {
+    if (!isNaN(parsed.getTime()) && parsed >= tenYearsAgo && parsed <= tenYearsAhead) {
       return `${year}-${month}-${day}`;
     }
-    // If date is in the past or invalid, skip (don't fall through to Spanish)
-    if (!isNaN(parsed.getTime())) {
-      return undefined;
-    }
+    return undefined;
   }
 
   // Pattern 2: Spanish format — spec regex
@@ -316,7 +314,7 @@ export function extractFinancialData(message: string): FinancialData {
  *  - monto: > 0 and <= 1_000_000_000
  *  - cuotas: integer >= 1 and <= 360
  *  - porcentajeHonorarios: 0–100
- *  - fecha: valid ISO date, not in the past
+ *  - fecha: valid ISO date, within ±10 years (registros históricos son válidos)
  */
 export function validateFinancialData(data: FinancialData): void {
   const errors: string[] = [];
@@ -360,8 +358,12 @@ export function validateFinancialData(data: FinancialData): void {
 
       if (!isValidDate) {
         errors.push('Fecha no es válida');
-      } else if (parsed < today) {
-        errors.push('Fecha no puede ser en el pasado');
+      } else {
+        const tenYearsAgo = new Date(today.getFullYear() - 10, today.getMonth(), today.getDate());
+        const tenYearsAhead = new Date(today.getFullYear() + 10, today.getMonth(), today.getDate());
+        if (parsed < tenYearsAgo || parsed > tenYearsAhead) {
+          errors.push('Fecha fuera de rango razonable (±10 años)');
+        }
       }
     }
   }

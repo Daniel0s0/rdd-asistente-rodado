@@ -178,11 +178,11 @@ describe('validateFinancialData', () => {
     );
   });
 
-  it('lanza ValidationError si fecha está en el pasado', () => {
-    // 2020-01-01 es siempre pasado
-    expect(() => validateFinancialData({ fecha: '2020-01-01' })).toThrow(ValidationError);
-    expect(() => validateFinancialData({ fecha: '2020-01-01' })).toThrow(
-      'Fecha no puede ser en el pasado'
+  it('lanza ValidationError si fecha está fuera del rango ±10 años', () => {
+    // 2010-01-01 está ~16 años en el pasado, fuera del rango ±10 años
+    expect(() => validateFinancialData({ fecha: '2010-01-01' })).toThrow(ValidationError);
+    expect(() => validateFinancialData({ fecha: '2010-01-01' })).toThrow(
+      'Fecha fuera de rango razonable (±10 años)'
     );
   });
 

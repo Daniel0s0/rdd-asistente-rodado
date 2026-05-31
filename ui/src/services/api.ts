@@ -104,3 +104,180 @@ export async function sendMessage(
     };
   }
 }
+
+// Analytics API types & functions
+export interface CarteraKPI {
+  totalCobradoAnio: number;
+  cobradoEsteMes: number;
+  acuerdosActivos: number;
+  cuotasVencidas: number;
+  porcentajeResultados: number;
+  causasActivas: number;
+  causasDesistidas: number;
+  causasCaducadas: number;
+}
+
+export interface IncomeData {
+  porMes: Array<{
+    mes: string;
+    total: number;
+    cobranza: number;
+    sentencia: number;
+    acuerdo: number;
+  }>;
+  porFuente: {
+    cobranza: number;
+    sentencia: number;
+    acuerdo: number;
+  };
+}
+
+export interface AcuerdoStatus {
+  causaId: string;
+  acuerdoId: string;
+  montoTotal: number;
+  cuotasPagadas: number;
+  cuotasTotal: number;
+  proximoVencimiento: string;
+  cuotasVencidas: number;
+  estadoGeneral: string;
+}
+
+export interface CaseResults {
+  total: number;
+  conResultado: number;
+  sinResultado: number;
+  desistidas: number;
+  caducadas: number;
+  activas: number;
+}
+
+export interface AnalyticsResponse<T> {
+  success: boolean;
+  data?: T;
+  timestamp: string;
+  error?: string;
+}
+
+export async function getCartera(): Promise<AnalyticsResponse<CarteraKPI>> {
+  const url = `${API_URL}/analytics/cartera`;
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${API_KEY}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        errorData.message || `HTTP ${response.status}: ${response.statusText}`
+      );
+    }
+
+    return await response.json();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return {
+      success: false,
+      error: message,
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+export async function getIngresos(
+  from?: string,
+  to?: string
+): Promise<AnalyticsResponse<IncomeData>> {
+  const params = new URLSearchParams();
+  if (from) params.append('from', from);
+  if (to) params.append('to', to);
+
+  const url = `${API_URL}/analytics/ingresos${params.toString() ? '?' + params.toString() : ''}`;
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${API_KEY}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        errorData.message || `HTTP ${response.status}: ${response.statusText}`
+      );
+    }
+
+    return await response.json();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return {
+      success: false,
+      error: message,
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+export async function getAcuerdos(): Promise<AnalyticsResponse<AcuerdoStatus[]>> {
+  const url = `${API_URL}/analytics/acuerdos`;
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${API_KEY}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        errorData.message || `HTTP ${response.status}: ${response.statusText}`
+      );
+    }
+
+    return await response.json();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return {
+      success: false,
+      error: message,
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+export async function getResultados(): Promise<AnalyticsResponse<CaseResults>> {
+  const url = `${API_URL}/analytics/resultados`;
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${API_KEY}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        errorData.message || `HTTP ${response.status}: ${response.statusText}`
+      );
+    }
+
+    return await response.json();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return {
+      success: false,
+      error: message,
+      timestamp: new Date().toISOString(),
+    };
+  }
+}

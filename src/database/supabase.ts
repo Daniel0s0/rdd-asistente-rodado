@@ -8,7 +8,7 @@ export function getDb() {
   if (client) return client;
 
   const env = getEnv();
-  client = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
+  client = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
 
   logger.debug({ url: env.SUPABASE_URL }, 'Supabase client initialized');
   return client;

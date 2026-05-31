@@ -14,6 +14,12 @@ import {
 } from '@api/webhook';
 import { agentChatHandler } from '@api/agent';
 import { casesHandler } from '@api/cases';
+import {
+  handleGetCartera,
+  handleGetIngresos,
+  handleGetAcuerdos,
+  handleGetResultados,
+} from '@api/analytics';
 import { registerSocketHandlers } from '@api/socket-handler';
 import { requireApiKey } from '@middleware/auth';
 import { webhookLimiter, chatLimiter } from '@middleware/rate-limit';
@@ -49,6 +55,11 @@ function main() {
   app.post('/webhook/caso-cierre', webhookLimiter, webhookCasoCierreHandler);
   app.post('/agent/chat', requireApiKey, chatLimiter, agentChatHandler);
   app.get('/cases', requireApiKey, chatLimiter, casesHandler);
+
+  app.get('/analytics/cartera', requireApiKey, handleGetCartera);
+  app.get('/analytics/ingresos', requireApiKey, handleGetIngresos);
+  app.get('/analytics/acuerdos', requireApiKey, handleGetAcuerdos);
+  app.get('/analytics/resultados', requireApiKey, handleGetResultados);
 
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
     logger.error({ error: err.message, stack: err.stack }, 'Unhandled error');

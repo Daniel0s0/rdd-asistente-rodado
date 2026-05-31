@@ -18,6 +18,11 @@ import {
   getRecentMessages,
   createMessage,
   updateConversationMetadata,
+  createAcuerdo,
+  createCuotas,
+  createRegistro,
+  markCuotaPagada,
+  getAcuerdosActivos,
 } from '@database/models';
 import { Conversation } from '@database/schema';
 import { AgentResponse, SheetsSyncData } from '@domain/agent';
@@ -67,6 +72,76 @@ export class TemporaryError extends Error {
 
 interface AnthropicAPIError extends Error {
   status?: number;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Supabase Actions (Fase 6.2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function calculateCuotaDates(
+  fechaPrimerPago: string,
+  cuotasTotal: number
+): string[] {
+  const dates: string[] = [];
+  const firstDate = new Date(fechaPrimerPago);
+
+  for (let i = 0; i < cuotasTotal; i++) {
+    const date = new Date(firstDate);
+    date.setMonth(date.getMonth() + i);
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    dates.push(`${yyyy}-${mm}-${dd}`);
+  }
+
+  return dates;
+}
+
+async function executeSuperparserAction(
+  conversationId: string,
+  intent: Intent,
+  financialData: FinancialData
+): Promise<void> {
+  if (intent === 'acuerdo' && financialData.monto && financialData.cuotas && financialData.fecha) {
+    const montoPorCuota = financialData.monto / financialData.cuotas;
+    const acuerdo = await createAcuerdo({
+      conversationId,
+      montoTotal: financialData.monto,
+      cuotasTotal: financialData.cuotas,
+      montoPorCuota,
+      porcentajeHonorarios: financialData.porcentajeHonorarios ?? 0,
+      fechaPrimerPago: financialData.fecha,
+    });
+
+    const cuotaDates = calculateCuotaDates(financialData.fecha, financialData.cuotas);
+    const cuotasToCreate = cuotaDates.map((fecha, idx) => ({
+      numero: idx + 1,
+      monto: montoPorCuota,
+      fechaVencimiento: fecha,
+    }));
+
+    await createCuotas(acuerdo.id, cuotasToCreate);
+    logger.info({ conversationId, acuerdoId: acuerdo.id }, 'Acuerdo + cuotas created in Supabase');
+  } else if (intent === 'pago' && financialData.monto && financialData.fecha) {
+    const acuerdosActivos = await getAcuerdosActivos(conversationId);
+
+    if (acuerdosActivos.length > 0) {
+      const acuerdo = acuerdosActivos[0];
+      const numeroCuota = 1;
+      await markCuotaPagada(acuerdo.id, numeroCuota, financialData.fecha);
+      logger.info({ conversationId, acuerdoId: acuerdo.id }, 'Cuota marked as paid in Supabase');
+    } else {
+      const tipo =
+        financialData.monto > 0 && !financialData.cuotas ? 'cobranza' : 'sentencia';
+      await createRegistro({
+        conversationId,
+        tipo,
+        monto: financialData.monto,
+        fecha: financialData.fecha,
+      });
+      logger.info({ conversationId }, 'Registro created in Supabase');
+    }
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -222,6 +297,23 @@ export class ClaudeAgent {
           throw new ValidationError(validationErr.message);
         }
         throw validationErr;
+      }
+    }
+
+    // ── 9.5 Execute Supabase actions (Fase 6.2) ───────────────────────────────
+    if (
+      financialData &&
+      Object.keys(financialData).length > 0 &&
+      (parsedIntent === 'acuerdo' || parsedIntent === 'pago')
+    ) {
+      try {
+        await executeSuperparserAction(conversation.id, parsedIntent, financialData);
+      } catch (err) {
+        logger.error(
+          { conversationId: conversation.id, intent: parsedIntent, error: err instanceof Error ? err.message : String(err) },
+          'ClaudeAgent.chat: Supabase action failed'
+        );
+        throw err;
       }
     }
 
@@ -433,6 +525,23 @@ export class ClaudeAgent {
           throw new ValidationError(validationErr.message);
         }
         throw validationErr;
+      }
+    }
+
+    // ── 9.5 Execute Supabase actions (Fase 6.2) ───────────────────────────────
+    if (
+      financialData &&
+      Object.keys(financialData).length > 0 &&
+      (parsedIntent === 'acuerdo' || parsedIntent === 'pago')
+    ) {
+      try {
+        await executeSuperparserAction(conversation.id, parsedIntent, financialData);
+      } catch (err) {
+        logger.error(
+          { conversationId: conversation.id, intent: parsedIntent, error: err instanceof Error ? err.message : String(err) },
+          'ClaudeAgent.chatStream: Supabase action failed'
+        );
+        throw err;
       }
     }
 
