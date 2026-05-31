@@ -8,7 +8,11 @@ import ResultadosTab from './cartera/ResultadosTab';
 
 type TabType = 'ingresos' | 'acuerdos' | 'resultados';
 
-export default function Cartera() {
+interface CarteraProps {
+  onOpenChat: () => void;
+}
+
+export default function Cartera({ onOpenChat }: CarteraProps) {
   const [activeTab, setActiveTab] = useState<TabType>('ingresos');
   const [kpiData, setKpiData] = useState<CarteraKPI | null>(null);
   const [incomeData, setIncomeData] = useState<IncomeData | null>(null);
@@ -63,9 +67,17 @@ export default function Cartera() {
     <div className="p-6 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Cartera</h1>
-          <p className="text-gray-600 mt-1">Análisis de ingresos y acuerdos</p>
+        <div className="mb-8 flex justify-between items-start">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Cartera</h1>
+            <p className="text-gray-600 mt-1">Análisis de ingresos y acuerdos</p>
+          </div>
+          <button
+            onClick={onOpenChat}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+          >
+            Consultar a Rodado
+          </button>
         </div>
 
         {/* Error message */}

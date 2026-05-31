@@ -12,7 +12,7 @@ import {
   webhookCasoModificacionHandler,
   webhookCasoCierreHandler,
 } from '@api/webhook';
-import { agentChatHandler } from '@api/agent';
+import { agentChatHandler, portfolioChatHandler } from '@api/agent';
 import { casesHandler } from '@api/cases';
 import {
   handleGetCartera,
@@ -54,6 +54,7 @@ function main() {
   app.post('/webhook/caso-modificacion', webhookLimiter, webhookCasoModificacionHandler);
   app.post('/webhook/caso-cierre', webhookLimiter, webhookCasoCierreHandler);
   app.post('/agent/chat', requireApiKey, chatLimiter, agentChatHandler);
+  app.post('/agent/portfolio-chat', requireApiKey, chatLimiter, portfolioChatHandler);
   app.get('/cases', requireApiKey, chatLimiter, casesHandler);
 
   app.get('/analytics/cartera', requireApiKey, handleGetCartera);

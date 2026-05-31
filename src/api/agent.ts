@@ -8,6 +8,11 @@ const agentChatRequestSchema = z.object({
   message: z.string().min(1, 'message requerido y no puede estar vacío'),
 });
 
+const portfolioChatRequestSchema = z.object({
+  message: z.string().min(1, 'message requerido y no puede estar vacío'),
+  conversation_id: z.string().uuid().optional(),
+});
+
 export async function agentChatHandler(
   req: Request,
   res: Response
@@ -57,6 +62,92 @@ export async function agentChatHandler(
         flags: response.flags,
         shouldSyncSheets: response.shouldSyncSheets,
         sheetsSyncData: response.sheetsSyncData,
+      },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    const err = error as Error & { stack?: string };
+
+    if (error instanceof ValidationError) {
+      logger.warn({ error: err.message }, 'Validation error');
+      res.status(400).json({
+        success: false,
+        error: 'validation_error',
+        message: err.message,
+        timestamp: new Date().toISOString(),
+      });
+    } else if (error instanceof ClaudeAPIError) {
+      logger.error({ error: err.message }, 'Claude API error');
+      res.status(500).json({
+        success: false,
+        error: 'claude_api_error',
+        message: 'Error al comunicarse con la API de Claude',
+        timestamp: new Date().toISOString(),
+      });
+    } else if (error instanceof TemporaryError) {
+      logger.warn({ error: err.message }, 'Temporary error');
+      res.status(503).json({
+        success: false,
+        error: 'temporary_error',
+        message: 'Servicio temporalmente no disponible, por favor reintente',
+        timestamp: new Date().toISOString(),
+      });
+    } else {
+      logger.error({ error: err.message, stack: err.stack }, 'Unexpected error');
+      res.status(500).json({
+        success: false,
+        error: 'internal_error',
+        message: 'Error interno del servidor',
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+}
+
+export async function portfolioChatHandler(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    // 1. Validar input
+    const validation = portfolioChatRequestSchema.safeParse(req.body);
+
+    if (!validation.success) {
+      const errors = validation.error.flatten().fieldErrors;
+      const messages = Object.entries(errors)
+        .map(([field, msgs]) => `${field}: ${msgs?.join(', ')}`)
+        .join('; ');
+
+      logger.warn({ errors: messages }, 'Portfolio chat validation failed');
+      res.status(400).json({
+        success: false,
+        error: 'validation_error',
+        message: `Input validation failed: ${messages}`,
+        timestamp: new Date().toISOString(),
+      });
+      return;
+    }
+
+    const { message, conversation_id } = validation.data;
+
+    logger.debug({ conversationId: conversation_id || 'new' }, 'Portfolio chat request received');
+
+    // 2. Llamar al agente
+    const response = await claudeAgent.portfolioChat(message, conversation_id);
+
+    // 3. Loguear éxito
+    logger.info(
+      { conversationId: response.conversationId, messageId: response.messageId },
+      'Portfolio chat completed successfully'
+    );
+
+    // 4. Retornar respuesta
+    res.status(200).json({
+      success: true,
+      data: {
+        conversationId: response.conversationId,
+        messageId: response.messageId,
+        assistantMessage: response.assistantMessage,
       },
       timestamp: new Date().toISOString(),
     });

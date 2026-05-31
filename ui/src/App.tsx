@@ -2,8 +2,9 @@ import { useState } from 'react';
 import Dashboard from './components/Dashboard';
 import ChatWindow from './components/ChatWindow';
 import Cartera from './components/Cartera';
+import PortfolioChatWindow from './components/PortfolioChatWindow';
 
-type AppView = 'causas' | 'cartera' | 'chat';
+type AppView = 'causas' | 'cartera' | 'chat' | 'portfolio-chat';
 
 function App() {
   const [view, setView] = useState<AppView>('causas');
@@ -14,6 +15,10 @@ function App() {
     setView('chat');
   };
 
+  const handleOpenPortfolioChat = () => {
+    setView('portfolio-chat');
+  };
+
   const handleBack = () => {
     setSelectedCausaId(null);
     setView('causas');
@@ -21,6 +26,10 @@ function App() {
 
   if (view === 'chat' && selectedCausaId) {
     return <ChatWindow causaId={selectedCausaId} onBack={handleBack} />;
+  }
+
+  if (view === 'portfolio-chat') {
+    return <PortfolioChatWindow onBack={() => setView('cartera')} />;
   }
 
   return (
@@ -55,7 +64,7 @@ function App() {
 
       {/* Content */}
       {view === 'causas' && <Dashboard onSelectCausa={handleSelectCausa} />}
-      {view === 'cartera' && <Cartera />}
+      {view === 'cartera' && <Cartera onOpenChat={handleOpenPortfolioChat} />}
     </div>
   );
 }

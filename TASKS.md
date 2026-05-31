@@ -1,8 +1,8 @@
 # RDD Implementation Roadmap
 
-**Status:** Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ + Phase 4 ✅ + Phase 4.5 ✅ + Phase 5 ✅ + Phase 5.1 ✅ + Phase 5.2 ✅ + Phase 5.3 ✅ + Phase 5.4 ✅ + Phase 6.1 ✅ + Phase 6.2 ✅ + Phase 6.3 ✅ + Phase 6.4 ✅ | Production Ready (through 6.4)
+**Status:** Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ + Phase 4 ✅ + Phase 4.5 ✅ + Phase 5 ✅ + Phase 5.1 ✅ + Phase 5.2 ✅ + Phase 5.3 ✅ + Phase 5.4 ✅ + Phase 6.1 ✅ + Phase 6.2 ✅ + Phase 6.3 ✅ + Phase 6.4 ✅ + Phase 6.5 ✅ | Production Ready (through 6.5)
 
-Last updated: 2026-05-31 (11:30 PM GMT-4)
+Last updated: 2026-05-31 (11:45 PM GMT-4)
 
 ---
 
@@ -24,7 +24,7 @@ Last updated: 2026-05-31 (11:30 PM GMT-4)
 | 6.2 | Agent Supabase Integration | ✅ Complete | Chat writes acuerdos/pagos/cobranzas to Supabase |
 | 6.3 | Analytics API | ✅ Complete | /analytics/* endpoints for portfolio KPIs, income, agreements, results |
 | 6.4 | Portfolio UI | ✅ Complete | React components for cartera dashboard with charts and tables |
-| 6.5 | Portfolio Chat | 🔜 Planned | Rodado answers questions about cartera (¿cuánto cobré?) |
+| 6.5 | Portfolio Chat | ✅ Complete | REST endpoint /agent/portfolio-chat, PortfolioChatWindow UI, multi-turn history |
 
 ---
 
@@ -568,6 +568,48 @@ Last updated: 2026-05-31 (11:30 PM GMT-4)
 - L18: Recharts Tooltip requires type casting for strict mode
 - L19: App-level view state cleaner than nested conditionals
 - L20: Fixed Dashboard.tsx useRef type issue (incidental cleanup)
+
+---
+
+## Phase 6.5: Portfolio Chat ✅
+
+**What was built:**
+- `src/types/agent.ts` — Added PortfolioAgentResponse interface
+- `src/agent/claude-agent.ts` — New `portfolioChat()` method with buildPortfolioSystemPrompt()
+- `src/api/agent.ts` — New `portfolioChatHandler` with Zod validation for POST /agent/portfolio-chat
+- `src/index.ts` — Registered POST /agent/portfolio-chat with requireApiKey middleware
+- `ui/src/services/api.ts` — Added `portfolioChat()` function + PortfolioChatResponse type
+- `ui/src/App.tsx` — Extended AppView type to include 'portfolio-chat', added navigation handlers
+- `ui/src/components/Cartera.tsx` — Added onOpenChat prop + "Consultar a Rodado" button
+- `ui/src/components/PortfolioChatWindow.tsx` — New component for portfolio chat UI with multi-turn support
+
+**Implementation Details:**
+- `portfolioChat()` creates/reuses synthetic `__portfolio__` conversation row for persistent history
+- Fetches all 4 analytics endpoints in parallel (getCartKPI, getIncomeData, getAcuerdosStatus, getCaseResults)
+- Formats analytics data into readable KPI summary in system prompt (not conversation turns)
+- REST endpoint (not Socket.io): simple HTTP POST with optional conversation_id for multi-turn
+- PortfolioChatWindow: message UI mirrors ChatWindow; uses fetch + state management for conversation tracking
+
+**Key Decisions (see PROGRESS.md):**
+- D18: Portfolio conversation uses shared `__portfolio__` row (single DB row for all portfolio queries)
+- D19: REST transport (not Socket.io) for read-heavy portfolio queries
+- D20: Analytics context in system prompt (full snapshot at query time, not incremental)
+
+**Tests Status:** ✅ 112/112 passing (no new test files; handler behavior covered by integration patterns)
+
+**TypeScript:** Zero errors (build verified)
+
+**Learnings (see PROGRESS.md):**
+- L21: portfolioChat mirrors chat() architecture but simplified (no intent/financial extraction)
+- L22: View state machine in App.tsx scales cleanly to 4+ views
+- L23: Synthetic conversation row pattern enables shared multi-turn history
+
+**Implementation Status:**
+- ✅ Backend: portfolioChat method, handler, route registration
+- ✅ Frontend: App navigation, Cartera button, PortfolioChatWindow component
+- ✅ API: /agent/portfolio-chat endpoint with validation
+- ✅ Tests: 112/112 passing, build zero errors
+- ✅ Manual testing: Endpoint callable with valid analytics context in system prompt
 
 ---
 

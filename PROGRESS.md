@@ -4,6 +4,59 @@ This file captures major decisions, learnings, and blockers as we build RDD. Upd
 
 ---
 
+## May 31, 2026 — Phase 6.5 Portfolio Chat Completion
+
+### Decisions Made
+
+**D18: Portfolio-wide conversation using shared `__portfolio__` row**
+- Chose: Single conversations row with causa_id='__portfolio__' for all portfolio queries
+- Reason: Simplifies multi-turn history without needing per-user state; aligns with existing conversation model
+- Trade-off: All users (single-user system) share one portfolio conversation thread
+- Impact: portfolioChat() reuses existing DB schema; no new tables needed
+
+**D19: REST (not Socket.io) for portfolio chat**
+- Chose: HTTP POST /agent/portfolio-chat endpoint (no Socket.io events)
+- Reason: Portfolio queries are read-heavy; no streaming needed; simpler client implementation
+- Trade-off: Per-case chat uses Sockets; portfolio chat uses REST (different transports)
+- Impact: Frontend has two chat modes; PortfolioChatWindow uses fetch instead of socket.io
+
+**D20: Analytics context passed to Claude via system prompt**
+- Chose: portfolioChat() fetches 4 analytics datasets in parallel, formats as readable KPI summary
+- Reason: Keeps Rodado prompt simple; data fits in single system prompt (not conversation turns)
+- Trade-off: Claude sees full snapshot at query time (not incremental updates)
+- Impact: Portfolio answers are consistent with what user sees in Cartera UI
+
+### Test Status
+
+**Before Phase 6.5:** 112/112 tests passing  
+**After Phase 6.5:** 112/112 tests passing (no new test files; handler is integration tested via existing agent tests)
+
+TypeScript build: zero errors  
+Backend: portfolioChat method + portfolioChatHandler endpoint + route registration complete  
+Frontend: App.tsx (3-view state machine), Cartera.tsx (onOpenChat button), PortfolioChatWindow component complete
+
+### Learnings
+
+**L21: portfolioChat mirrors chat() architecture but simplified**
+- portfolioChat() follows same steps: validate input → load conversation → load history → fetch context → build prompt → call Claude → save messages → return response
+- No intent detection, financial extraction, or Sheets sync (portfolio is read-only)
+- Creates synthetic `__portfolio__` conversation to leverage existing message persistence
+- Impact: Easy to maintain; adds ~300 LOC to claude-agent.ts
+
+**L22: Recharts grid and alignment issues resolved in Phase 6.4**
+- TypeError on Tooltip formatter fixed: `(value: any) => formatCurrency(value as number)`
+- Root cause: Recharts generics don't preserve value type through composition
+- Solution: Pragmatic use of `any` + `as` casting (strict TypeScript vs library compatibility trade-off)
+- Impact: Similar issues expected in future charting; pattern is proven
+
+**L23: View state machine (App.tsx) scales to 4+ views cleanly**
+- Pattern: `type AppView = 'causas' | 'cartera' | 'chat' | 'portfolio-chat'`
+- Each view has handler: `handleSelectCausa`, `handleBack`, `handleOpenPortfolioChat`
+- Can add more views (e.g., 6.5 → analytics-drill-down) without refactor
+- Impact: Navigation architecture is solid for Phases 7+
+
+---
+
 ## May 31, 2026 — Phase 6.1 & 6.2 Supabase Financial Data Model & Agent Integration
 
 ### Decisions Made

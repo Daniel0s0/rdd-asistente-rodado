@@ -165,3 +165,22 @@ export interface ClientToServerEvents {
   send_message: (payload: SocketSendMessagePayload) => void;
   leave_case: (payload: SocketLeaveCasePayload) => void;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Portfolio Agent Response (Phase 6.5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * PortfolioAgentResponse — lightweight response from portfolio chat.
+ * No intent detection or financial extraction (read-only portfolio queries).
+ */
+export interface PortfolioAgentResponse {
+  /** UUID of the portfolio conversation thread */
+  conversationId: string;
+
+  /** UUID of the assistant message saved to the database */
+  messageId: string;
+
+  /** Claude's response about the portfolio */
+  assistantMessage: string;
+}

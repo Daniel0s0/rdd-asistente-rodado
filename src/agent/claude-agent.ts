@@ -18,6 +18,7 @@ import {
   getRecentMessages,
   createMessage,
   updateConversationMetadata,
+  createConversation,
   createAcuerdo,
   createCuotas,
   createRegistro,
@@ -25,7 +26,13 @@ import {
   getAcuerdosActivos,
 } from '@database/models';
 import { Conversation } from '@database/schema';
-import { AgentResponse, SheetsSyncData } from '@domain/agent';
+import { AgentResponse, SheetsSyncData, PortfolioAgentResponse } from '@domain/agent';
+import {
+  getCartKPI,
+  getIncomeData,
+  getAcuerdosStatus,
+  getCaseResults,
+} from '@database/analytics-queries';
 import {
   parseUserIntent,
   extractFinancialData,
@@ -625,6 +632,174 @@ export class ClaudeAgent {
   // ───────────────────────────────────────────────────────────────────────────
 
   /**
+   * Portfolio-wide conversation (Phase 6.5).
+   * Answers questions about the entire portfolio without requiring a specific causa_id.
+   *
+   * @param userMessage    - User question about the portfolio
+   * @param conversationId - Optional existing conversation ID for multi-turn (reuses `__portfolio__` row)
+   * @returns PortfolioAgentResponse with assistantMessage
+   */
+  async portfolioChat(
+    userMessage: string,
+    conversationId?: string
+  ): Promise<PortfolioAgentResponse> {
+    const env = getEnv();
+
+    // ── 1. Validate input ────────────────────────────────────────────────────
+    if (!userMessage || userMessage.trim() === '') {
+      throw new ValidationError('userMessage is required and must not be empty');
+    }
+
+    logger.info({ conversationId: conversationId || 'new' }, 'ClaudeAgent.portfolioChat: starting');
+
+    // ── 2. Get or create `__portfolio__` conversation ────────────────────────
+    let conversation: Conversation | null = null;
+    try {
+      conversation = await getConversationByCausaId('__portfolio__');
+    } catch {
+      // If `__portfolio__` row doesn't exist, create it
+      logger.info({}, 'ClaudeAgent.portfolioChat: creating portfolio conversation');
+      conversation = await createConversation('__portfolio__', {});
+    }
+
+    if (!conversation) {
+      throw new ValidationError('Failed to create or retrieve portfolio conversation');
+    }
+
+    // Override with explicit conversationId if provided (multi-turn reuse)
+    if (conversationId && conversationId !== conversation.id) {
+      try {
+        const explicit = await getConversationByCausaId('__portfolio__');
+        if (explicit && explicit.id === conversationId) {
+          conversation = explicit;
+        }
+      } catch {
+        // Ignore error, use existing conversation
+      }
+    }
+
+    // ── 3. Load message history ──────────────────────────────────────────────
+    const recentMessages = await getRecentMessages(
+      conversation.id,
+      env.CLAUDE_MAX_CONTEXT_TURNS
+    );
+
+    logger.debug(
+      { conversationId: conversation.id, historyCount: recentMessages.length },
+      'ClaudeAgent.portfolioChat: history loaded'
+    );
+
+    // ── 4. Save user message ─────────────────────────────────────────────────
+    const userDbMessage = await createMessage(
+      conversation.id,
+      'user',
+      userMessage,
+      { intent: 'consulta' } // Portfolio queries are always 'consulta' (read-only)
+    );
+
+    // ── 5. Build messages array for Claude ───────────────────────────────────
+    const claudeMessages: Array<{ role: 'user' | 'assistant'; content: string }> =
+      recentMessages.map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      }));
+
+    claudeMessages.push({ role: 'user', content: userMessage });
+
+    // ── 6. Fetch analytics context in parallel ───────────────────────────────
+    const [cartKPI, incomeData, acuerdos, resultados] = await Promise.all([
+      getCartKPI(),
+      getIncomeData(
+        new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0], // Jan 1st this year
+        new Date().toISOString().split('T')[0] // today
+      ),
+      getAcuerdosStatus(),
+      getCaseResults(),
+    ]);
+
+    // ── 7. Build portfolio system prompt with analytics data ──────────────────
+    const portfolioSystemPrompt = this.buildPortfolioSystemPrompt(
+      cartKPI,
+      incomeData,
+      acuerdos,
+      resultados
+    );
+
+    // ── 8. Call Claude SDK ───────────────────────────────────────────────────
+    let claudeResponse: Awaited<ReturnType<typeof this.client.messages.create>>;
+    try {
+      claudeResponse = await this.client.messages.create({
+        model: env.CLAUDE_MODEL,
+        system: portfolioSystemPrompt,
+        messages: claudeMessages,
+        max_tokens: 2048,
+        temperature: env.CLAUDE_TEMPERATURE,
+      });
+    } catch (err) {
+      const apiErr = err as AnthropicAPIError;
+      const status = apiErr.status;
+      logger.error(
+        { conversationId: conversation.id, status, error: apiErr.message },
+        'ClaudeAgent.portfolioChat: Claude API error'
+      );
+
+      if (status === 429 || (status !== undefined && status >= 500)) {
+        throw new TemporaryError(
+          `Claude API temporary error (status ${status}): ${apiErr.message}`
+        );
+      }
+      if (status === 401 || status === 403) {
+        throw new ClaudeAPIError(
+          `Claude API auth error (status ${status}): ${apiErr.message}`
+        );
+      }
+      if (status === 400) {
+        throw new ValidationError(
+          `Claude API bad request (status 400): ${apiErr.message}`
+        );
+      }
+      throw err;
+    }
+
+    // Extract text
+    const contentBlock = claudeResponse.content[0];
+    const assistantContent =
+      contentBlock && contentBlock.type === 'text' ? contentBlock.text : '';
+
+    // ── 9. Save assistant message ────────────────────────────────────────────
+    const assistantDbMessage = await createMessage(
+      conversation.id,
+      'assistant',
+      assistantContent,
+      {
+        response_type: 'summary',
+        processing_ok: true,
+        model: claudeResponse.model,
+        tokens_used: {
+          input: claudeResponse.usage.input_tokens,
+          output: claudeResponse.usage.output_tokens,
+        },
+      }
+    );
+
+    logger.info(
+      {
+        conversationId: conversation.id,
+        userMessageId: userDbMessage.id,
+        assistantMessageId: assistantDbMessage.id,
+      },
+      'ClaudeAgent.portfolioChat: complete'
+    );
+
+    // ── Return PortfolioAgentResponse ────────────────────────────────────────
+    return {
+      conversationId: conversation.id,
+      messageId: assistantDbMessage.id,
+      assistantMessage: assistantContent,
+    };
+  }
+
+  /**
    * Build the system prompt for Claude using case information.
    * Includes demandado, monto_demanda, tribunal, and rit when available.
    */
@@ -829,6 +1004,78 @@ RESTRICCIONES:
       action: 'UPDATE',
       fields,
     };
+  }
+
+  /**
+   * Build portfolio system prompt (Phase 6.5).
+   * Formats analytics data as readable context for portfolio-wide queries.
+   */
+  private buildPortfolioSystemPrompt(
+    cartKPI: any,
+    incomeData: any,
+    acuerdos: any[],
+    resultados: any
+  ): string {
+    const formatCurrency = (num: number) => {
+      if (num >= 1_000_000) {
+        return `$${(num / 1_000_000).toFixed(1)}M`;
+      }
+      if (num >= 1_000) {
+        return `$${(num / 1_000).toFixed(0)}K`;
+      }
+      return `$${num}`;
+    };
+
+    // Format last 6 months of income
+    const lastSixMonths = incomeData.porMes
+      .slice(-6)
+      .map((m: any) => `${m.mes}: ${formatCurrency(m.total)} (cobranza ${formatCurrency(m.cobranza)} / sentencia ${formatCurrency(m.sentencia)} / acuerdo ${formatCurrency(m.acuerdo)})`)
+      .join('\n');
+
+    // Format active agreements
+    const acuerdosFormatted = acuerdos
+      .slice(0, 10) // Show first 10 to keep prompt reasonable
+      .map((a: any) => `${a.causaId}: ${formatCurrency(a.montoTotal)} (${a.cuotasPagadas}/${a.cuotasTotal} cuotas, próx ${a.proximoVencimiento}, ${a.estadoGeneral})`)
+      .join('\n');
+
+    return `Eres Rodado, asistente del estudio jurídico RDD. Respondes preguntas sobre la cartera completa del bufete.
+
+DATOS DE LA CARTERA (actualizados al momento de esta consulta):
+
+KPIs GENERALES:
+- Cobrado este año: ${formatCurrency(cartKPI.totalCobradoAnio)}
+- Cobrado este mes: ${formatCurrency(cartKPI.cobradoEsteMes)}
+- Acuerdos activos: ${cartKPI.acuerdosActivos}
+- Cuotas vencidas: ${cartKPI.cuotasVencidas}
+- % causas con resultado: ${cartKPI.porcentajeResultados}%
+- Causas activas: ${cartKPI.causasActivas}
+- Causas desistidas: ${cartKPI.causasDesistidas}
+- Causas caducadas: ${cartKPI.causasCaducadas}
+
+INGRESOS ÚLTIMOS 6 MESES:
+${lastSixMonths}
+
+DISTRIBUCIÓN POR FUENTE:
+- Cobranza: ${incomeData.porFuente.cobranza}%
+- Sentencia: ${incomeData.porFuente.sentencia}%
+- Acuerdo: ${incomeData.porFuente.acuerdo}%
+
+ACUERDOS ACTIVOS (primeros 10):
+${acuerdosFormatted}
+
+ESTADÍSTICAS DE CAUSAS:
+- Total: ${resultados.total}
+- Con resultado: ${resultados.conResultado}
+- Sin resultado: ${resultados.sinResultado}
+- Desistidas: ${resultados.desistidas}
+- Caducadas: ${resultados.caducadas}
+
+INSTRUCCIONES:
+- Responde en español con tono profesional y conciso
+- Usa pesos chilenos con formato legible ($1.5M, $800K)
+- Solo responde preguntas sobre la cartera del bufete
+- Si el usuario pregunta sobre una causa específica, sugiere que use la vista de "Causas" o el chat de esa causa
+- Sé honesto si no tienes información completa sobre algo`;
   }
 }
 

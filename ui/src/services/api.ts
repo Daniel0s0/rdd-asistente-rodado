@@ -281,3 +281,52 @@ export async function getResultados(): Promise<AnalyticsResponse<CaseResults>> {
     };
   }
 }
+
+// Portfolio Chat (Phase 6.5)
+export interface PortfolioChatResponse {
+  success: boolean;
+  data?: {
+    conversationId: string;
+    messageId: string;
+    assistantMessage: string;
+  };
+  timestamp: string;
+  error?: string;
+}
+
+export async function portfolioChat(
+  message: string,
+  conversationId?: string
+): Promise<PortfolioChatResponse> {
+  const url = `${API_URL}/agent/portfolio-chat`;
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${API_KEY}`,
+      },
+      body: JSON.stringify({
+        message,
+        conversation_id: conversationId,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        errorData.message || `HTTP ${response.status}: ${response.statusText}`
+      );
+    }
+
+    return await response.json();
+  } catch (error) {
+    const message_err = error instanceof Error ? error.message : 'Unknown error';
+    return {
+      success: false,
+      error: message_err,
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
