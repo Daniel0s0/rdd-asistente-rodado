@@ -25,10 +25,18 @@ export interface CartKPI {
 
 export async function getCartKPI(): Promise<CartKPI> {
   const db = getDb();
+  const now = new Date();
+  const yearStart = `${now.getFullYear()}-01-01`;
+  const yearEnd = `${now.getFullYear()}-12-31`;
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const monthEnd = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}-01`;
 
   const { data: registrosAnio, error: registrosAnioError } = await db
     .from('registros')
-    .select('monto');
+    .select('monto')
+    .gte('fecha', yearStart)
+    .lte('fecha', yearEnd);
 
   if (registrosAnioError) {
     logger.error({ error: registrosAnioError.message }, 'getCartKPI: registros year error');
@@ -40,7 +48,9 @@ export async function getCartKPI(): Promise<CartKPI> {
 
   const { data: registrosMes, error: registrosMesError } = await db
     .from('registros')
-    .select('monto');
+    .select('monto')
+    .gte('fecha', monthStart)
+    .lt('fecha', monthEnd);
 
   if (registrosMesError) {
     logger.error({ error: registrosMesError.message }, 'getCartKPI: registros month error');
@@ -49,8 +59,6 @@ export async function getCartKPI(): Promise<CartKPI> {
 
   const cobradoEsteMes = (registrosMes as any[] || [])
     .reduce((sum, r) => sum + (r.monto || 0), 0);
-
-  const now = new Date();
 
   const { data: acuerdos, error: acuerdosError } = await db
     .from('acuerdos')
