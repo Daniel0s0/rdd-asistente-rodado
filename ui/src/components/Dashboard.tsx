@@ -94,8 +94,25 @@ export default function Dashboard({ onSelectCausa }: DashboardProps) {
   };
 
   const uniqueTribunals = Array.from(new Set(cases.map((c) => c.tribunal).filter(Boolean))) as string[];
-  const uniqueEtapas = Array.from(new Set(cases.map((c) => c.etapa).filter(Boolean))) as string[];
-  const uniqueStates = Array.from(new Set(cases.map((c) => c.caseState).filter(Boolean))) as string[];
+
+  const CASE_STATES = [
+    { value: 'activo', label: 'Activo' },
+    { value: 'acuerdo', label: 'Acuerdo' },
+    { value: 'archivado', label: 'Archivado' },
+    { value: 'desistido', label: 'Desistido' },
+    { value: 'caducado', label: 'Caducado' },
+  ];
+
+  const getCaseStateStyle = (state: string | undefined) => {
+    const styles: Record<string, { bg: string; text: string; label: string }> = {
+      activo: { bg: 'bg-green-100', text: 'text-green-800', label: 'Activo' },
+      acuerdo: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Acuerdo' },
+      archivado: { bg: 'bg-gray-100', text: 'text-gray-600', label: 'Archivado' },
+      desistido: { bg: 'bg-orange-100', text: 'text-orange-800', label: 'Desistido' },
+      caducado: { bg: 'bg-red-100', text: 'text-red-800', label: 'Caducado' },
+    };
+    return state && state in styles ? styles[state] : { bg: 'bg-gray-100', text: 'text-gray-600', label: state || 'Desconocido' };
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
@@ -167,9 +184,9 @@ export default function Dashboard({ onSelectCausa }: DashboardProps) {
                 className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               >
                 <option value="">Todos los estados</option>
-                {uniqueStates.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
+                {CASE_STATES.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
                   </option>
                 ))}
               </select>
@@ -223,9 +240,14 @@ export default function Dashboard({ onSelectCausa }: DashboardProps) {
                         >
                           {c.status === 'active' ? 'Activa' : 'Cerrada'}
                         </span>
-                        {c.caseState && (
-                          <span className="text-xs text-gray-500">{c.caseState}</span>
-                        )}
+                        {c.caseState && (() => {
+                          const style = getCaseStateStyle(c.caseState);
+                          return (
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${style.bg} ${style.text}`}>
+                              {style.label}
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
                   </button>

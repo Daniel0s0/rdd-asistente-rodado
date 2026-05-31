@@ -215,4 +215,74 @@ describe('GET /cases handler', () => {
       })
     );
   });
+
+  it('forwards q param to listConversations', async () => {
+    mockListConversations.mockResolvedValue([]);
+
+    const req = createRequest({ q: 'García' }) as Request;
+    const res = createResponse() as Response;
+
+    await casesHandler(req, res);
+
+    expect(mockListConversations).toHaveBeenCalledWith(expect.objectContaining({ q: 'García' }));
+  });
+
+  it('forwards tribunal param to listConversations', async () => {
+    mockListConversations.mockResolvedValue([]);
+
+    const req = createRequest({ tribunal: 'Laboral de Santiago' }) as Request;
+    const res = createResponse() as Response;
+
+    await casesHandler(req, res);
+
+    expect(mockListConversations).toHaveBeenCalledWith(expect.objectContaining({ tribunal: 'Laboral de Santiago' }));
+  });
+
+  it('forwards etapa param to listConversations', async () => {
+    mockListConversations.mockResolvedValue([]);
+
+    const req = createRequest({ etapa: 'cobranza' }) as Request;
+    const res = createResponse() as Response;
+
+    await casesHandler(req, res);
+
+    expect(mockListConversations).toHaveBeenCalledWith(expect.objectContaining({ etapa: 'cobranza' }));
+  });
+
+  it('forwards case_state param to listConversations', async () => {
+    mockListConversations.mockResolvedValue([]);
+
+    const req = createRequest({ case_state: 'desistido' }) as Request;
+    const res = createResponse() as Response;
+
+    await casesHandler(req, res);
+
+    expect(mockListConversations).toHaveBeenCalledWith(expect.objectContaining({ case_state: 'desistido' }));
+  });
+
+  it('forwards from and to date params to listConversations', async () => {
+    mockListConversations.mockResolvedValue([]);
+
+    const req = createRequest({ from: '2026-01-01', to: '2026-05-31' }) as Request;
+    const res = createResponse() as Response;
+
+    await casesHandler(req, res);
+
+    expect(mockListConversations).toHaveBeenCalledWith(
+      expect.objectContaining({ from: '2026-01-01', to: '2026-05-31' })
+    );
+  });
+
+  it('forwards limit and offset params to listConversations', async () => {
+    mockListConversations.mockResolvedValue([]);
+
+    const req = createRequest({ limit: '20', offset: '40' }) as Request;
+    const res = createResponse() as Response;
+
+    await casesHandler(req, res);
+
+    expect(mockListConversations).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 20, offset: 40 })
+    );
+  });
 });
