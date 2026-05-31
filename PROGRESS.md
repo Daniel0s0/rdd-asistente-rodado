@@ -4,10 +4,18 @@ This file captures major decisions, learnings, and blockers as we build RDD. Upd
 
 ---
 
-## May 31, 2026 — Phase 6.5 Portfolio Chat Completion ✅ PUSHED
+## May 31, 2026 — Phase 6.5 Technical Debt Resolution & Branch Discipline Learning
 
 ### Status
-**✅ COMPLETE & PUSHED** — Commit `dd0c0c6` pushed to main. Verified by Code Solution Validator (YELLOW approval).
+**✅ COMPLETE** — Technical debt (11 tests) added to main. Commit `2d8c272` pushed.
+
+### Critical Learning
+
+**L21: Always create feature branch BEFORE making changes, regardless of scope**
+- What happened: Made 11 test additions directly on main, then attempted to create PR
+- Why it matters: Lost ability to create formal PR (no diff between branches); violated git workflow discipline
+- How to fix: Session workflow must be: verify current branch → create feature branch → make changes → push → PR → merge back to main
+- Impact: Next implementation work must enforce this from minute 1 (./scripts/init.sh should verify branch status)
 
 ### Decisions Made
 
