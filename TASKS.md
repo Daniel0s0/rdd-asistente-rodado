@@ -1,8 +1,8 @@
 # RDD Implementation Roadmap
 
-**Status:** Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ + Phase 4 ✅ + Phase 4.5 ✅ + Phase 5 ✅ + Phase 5.1 ✅ + Phase 5.2 ✅ | Production Ready
+**Status:** Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ + Phase 4 ✅ + Phase 4.5 ✅ + Phase 5 ✅ + Phase 5.1 ✅ + Phase 5.2 ✅ + Phase 5.3 ✅ | Production Ready
 
-Last updated: 2026-05-30 (3:10 PM GMT-4)
+Last updated: 2026-05-30 (8:10 PM GMT-4)
 
 ---
 
@@ -307,6 +307,67 @@ Last updated: 2026-05-30 (3:10 PM GMT-4)
 - No page refresh required
 
 **Next Phase:** Phase 5.3 (Advanced Search) — optional; users can search by client name, RUT, or RIT
+
+---
+
+## Phase 5.3: Supabase Migration & Advanced Search ✅
+
+**Status:** ✅ **PRODUCTION READY** — Full implementation, all tests passing (106/106, 100% pass rate)
+
+**What was built:**
+- `src/database/supabase.ts` — Supabase client singleton (replaces SQLite)
+- `src/database/schema.ts` — Updated TypeScript interfaces with searchable columns
+- `src/database/models.ts` — Refactored queries to use Supabase PostgREST API
+- Enhanced webhook handlers — now persist `cliente_nombre`, `cliente_rut`
+- `src/middleware/auth.ts` — Timing-safe API key validation with `crypto.timingSafeEqual()`
+- `tests/agent/claude-agent.test.ts` — Refactored message mock with functional state passing
+- Message persistence — proper filtering, ordering, and limiting
+
+**Key decisions:**
+- **D8:** SQLite → Supabase PostgreSQL for production workload
+- **D9:** Functional parameter passing in query mock (not global state) to prevent test race conditions
+- **D10:** Timing-safe comparison for API key validation (security hardening)
+
+**Security improvements:**
+- ⚠️ → ✅ API key validation: Fixed timing attack vulnerability
+  - Before: Direct string comparison (`providedKey !== expectedKey`)
+  - After: Constant-time comparison using `crypto.timingSafeEqual()`
+  - Impact: Resistant to timing-based key guessing attacks
+
+**Test improvements:**
+- Message mock: Proper insert/select flow distinction
+- Query chaining: All methods available at every stage (eq, order, limit, single)
+- Filter state: Functional parameter passing prevents concurrent test interference
+- Database state: insertedMessages array for proper persistence tracking
+
+**Test status:** ✅ **106/106 passing** (15 test files, 2 skipped)
+- claude-agent.test.ts: All 5 previously failing tests now pass
+- models.test.ts: All database operations verified
+- socket-handler.test.ts: WebSocket handlers functional
+- All integration tests passing
+
+**Verification (May 30, 8:10 PM):**
+- ✅ TypeScript: `npm run type-check` — zero errors
+- ✅ Build: `npm run build` — successful
+- ✅ Tests: 106/106 passing (100% pass rate)
+- ✅ Linting: clean
+- ✅ Endpoints: all APIs functional (health, webhook, agent, cases, socket)
+- ✅ Security: timing-safe API key validation deployed
+
+**Key commits:**
+- 0b5b1ae: fix: Resolve 5 failing tests + security vulnerabilities
+  - Fixed message persistence in agent tests
+  - Implemented timing-safe API key validation
+  - Refactored message mock with local filter/order state
+  - All 106 tests passing, zero TypeScript errors
+
+**Learnings captured:**
+- See PROGRESS.md L8-L12 for full technical details
+- Mock testing patterns for PostgREST APIs
+- Functional state passing for concurrent test safety
+- Timing attack vulnerability and mitigation
+
+**Next Phase:** Phase 5.4 (Advanced Search UI) — Dashboard search by client name, RUT, tribunal, case state
 
 ---
 

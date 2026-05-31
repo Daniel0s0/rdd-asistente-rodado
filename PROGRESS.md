@@ -118,6 +118,83 @@ After: 101 passing, 5 failing
 
 ---
 
+## May 30, 2026 — Phase 5.3 Supabase Migration & Test Infrastructure
+
+### Decisions Made
+
+**D8: Migrate SQLite → Supabase PostgreSQL for Phase 5.3+**
+- Chose: PostgreSQL (Supabase) over SQLite
+- Reason: Production workload needs better querying, indexing, and cloud backup; Dashboard search requires efficient filtering
+- Trade-off: SQLite was simpler locally; Supabase adds cloud dependency but provides managed infrastructure
+- Impact: `src/database/` now uses Supabase client; schema extended with searchable columns (cliente_nombre, demandado, tribunal, rit)
+
+**D9: Supabase mock testing uses functional parameter passing (not global state)**
+- Chose: Pass filter/order/limit through query chain parameters
+- Reason: Global closure variables caused race conditions between concurrent tests
+- Trade-off: More verbose mock code, but predictable and testable
+- Impact: Message mock refactored with `createMessagesChain(data, inInsertFlow, filterColumn, filterValue, orderField, orderAsc, limitValue)` signature
+
+**D10: API key validation hardened with crypto.timingSafeEqual()**
+- Chose: Timing-safe comparison for all API key checks
+- Reason: Direct string comparison vulnerable to timing attacks (attacker measures response time to guess key byte-by-byte)
+- Trade-off: Minimal performance impact (crypto overhead acceptable)
+- Impact: `src/middleware/auth.ts` now uses `crypto.timingSafeEqual()` for constant-time comparison
+
+### Learnings
+
+**L8: Supabase query chaining requires proper insert/select flow distinction**
+- Problem: Message mock returned empty array on insert, causing messageId to be undefined
+- Root Cause: Mock didn't differentiate between `.insert().then()` (return single record) vs `.select().then()` (return array)
+- Solution: Track `inInsertFlow` flag to return different data structures
+- Result: All message insertion tests now pass
+- Future: Document Supabase mock patterns in testing-strategy.md
+
+**L9: Mock filter state conflicts cause silent test failures**
+- Problem: Multiple tests running concurrently would interfere with each other's filters (e.g., one test's eq('conversation_id', 'conv1') overwritten by another's eq('cause_id', 'xyz'))
+- Root Cause: Used module-level variables (messageFilterColumn, messageFilterValue) to track filter state
+- Solution: Pass filter state through functional parameters instead of closure variables
+- Result: Message history filtering now works correctly; no cross-test interference
+- Future: Always use functional state passing for stateful mocks, not global variables
+
+**L10: Message persistence requires proper database state tracking**
+- Problem: getConversationHistory() returned 0 messages because test mock wasn't tracking insertions
+- Root Cause: Message mock had separate insert path and select path with no shared state
+- Solution: Maintain insertedMessages array and filter it in the select chain
+- Result: Message history tests pass; persistence verified
+- Future: Test database infrastructure should always track inserted state for retrieval
+
+**L11: Query builder mocking needs all filter methods available at all chain stages**
+- Problem: Test failed because .eq() followed by .order() but mock only implemented .eq()
+- Root Cause: Message chain didn't implement .order() method after .eq()
+- Solution: Implement all query methods (eq, order, limit, single) at every stage of the chain
+- Result: Complex queries like `.eq('conversation_id', 'c1').order('created_at', { ascending: false }).limit(10).then()` work correctly
+- Future: Document full method chain requirements for PostgREST mocks
+
+**L12: Timing attack on API key validation is real security issue**
+- Problem: Direct string comparison with !== takes variable time based on where strings differ
+- Root Cause: JavaScript's default string comparison operator is not constant-time
+- Solution: Use crypto.timingSafeEqual() which always takes constant time regardless of where difference occurs
+- Result: API key validation now timing-safe; resistant to timing attacks
+- Future: Apply timing-safe comparison to all cryptographic comparisons (webhook signatures, tokens, etc.)
+
+### Test Status
+
+Before: 101 passing, 5 failing  
+After: **106 passing, 0 failing** (100% pass rate)  
+**Improvement**: +5 tests fixed, all claude-agent tests now passing
+
+**Phase 5.3 Verification:**
+- ✅ TypeScript compilation: 0 errors
+- ✅ Test suite: 106/106 passing (15 test files, 2 skipped)
+- ✅ All endpoints functional (health, webhook, agent, cases, socket)
+- ✅ Security: Timing-safe API key validation implemented
+- ✅ Database: Supabase integration complete with message persistence
+- ✅ Message history: Proper filtering, ordering, and limiting
+- ✅ Conversation lookup: Validates nonexistent causaId with proper error
+- ✅ Deployment: Build successful, ready for production
+
+---
+
 ## May 30, 2026 — Phase 5.2 WebSocket Streaming Debug Session
 
 ### Decisions Made
