@@ -18,7 +18,7 @@ import {
   getRecentMessages,
   createMessage,
   updateConversationMetadata,
-  createConversation,
+  createSimpleConversation,
   createAcuerdo,
   createCuotas,
   createRegistro,
@@ -653,17 +653,16 @@ export class ClaudeAgent {
     logger.info({ conversationId: conversationId || 'new' }, 'ClaudeAgent.portfolioChat: starting');
 
     // ── 2. Get or create `__portfolio__` conversation ────────────────────────
-    let conversation: Conversation | null = null;
-    try {
-      conversation = await getConversationByCausaId('__portfolio__');
-    } catch {
-      // If `__portfolio__` row doesn't exist, create it
-      logger.info({}, 'ClaudeAgent.portfolioChat: creating portfolio conversation');
-      conversation = await createConversation('__portfolio__', {});
-    }
+    let conversation = await getConversationByCausaId('__portfolio__');
 
     if (!conversation) {
-      throw new ValidationError('Failed to create or retrieve portfolio conversation');
+      logger.info({}, 'ClaudeAgent.portfolioChat: creating portfolio conversation');
+      try {
+        conversation = await createSimpleConversation('__portfolio__');
+      } catch (error) {
+        logger.error({ error }, 'ClaudeAgent.portfolioChat: failed to create conversation');
+        throw new ValidationError('Failed to create portfolio conversation');
+      }
     }
 
     // Override with explicit conversationId if provided (multi-turn reuse)

@@ -56,6 +56,37 @@ export async function createConversation(
   return data as Conversation;
 }
 
+/** Create a conversation without case data (for portfolio chat and system conversations) */
+export async function createSimpleConversation(
+  causaId: string
+): Promise<Conversation> {
+  const db = getDb();
+  const conversationId = randomUUID();
+
+  const insert = {
+    id: conversationId,
+    causa_id: causaId,
+    case_state: 'activo',
+    ingreso_honorarios: 0,
+    pagos_pendientes: 0,
+    message_count: 0,
+    metadata: {} as ConversationMetadata,
+  };
+
+  const { data, error } = await (db.from('conversations') as any).insert([insert]).select().single();
+
+  if (error) {
+    if (error.message.includes('duplicate key')) {
+      throw new Error(`Conversation for causa_id "${causaId}" already exists.`);
+    }
+    logger.error({ error: error.message, causaId }, 'createSimpleConversation: database error');
+    throw error;
+  }
+
+  logger.debug({ conversationId, causaId }, 'Simple conversation created');
+  return data as Conversation;
+}
+
 export async function getConversationByCausaId(causaId: string): Promise<Conversation | null> {
   const db = getDb();
 
