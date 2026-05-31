@@ -193,13 +193,136 @@ describe('ClaudeAgent.chat()', () => {
       closed_at: null,
     };
 
+    // Track inserted messages for this test
+    const insertedMessages: any[] = [];
+    let conversationQueryFilter: { column?: string; value?: any } = {};
+
     // Mock Supabase DB with dynamic responses based on table
     mockDb = {
       from: vi.fn((table: string) => {
         if (table === 'conversations') {
-          return createMockPostgrestQuery(mockConversation);
+          // Return a query chain that tracks filters for conversations
+          const createConversationChain = (data: any) => ({
+            select: vi.fn().mockImplementation(() => createConversationChain(data)),
+            eq: vi.fn().mockImplementation((column: string, value: any) => {
+              conversationQueryFilter = { column, value };
+              // If looking for a NONEXISTENT causa_id, return null
+              if (column === 'causa_id' && value.includes('NONEXISTENT')) {
+                return createConversationChain(null);
+              }
+              return createConversationChain(data);
+            }),
+            is: vi.fn().mockImplementation(() => createConversationChain(data)),
+            or: vi.fn().mockImplementation(() => createConversationChain(data)),
+            gte: vi.fn().mockImplementation(() => createConversationChain(data)),
+            lte: vi.fn().mockImplementation(() => createConversationChain(data)),
+            in: vi.fn().mockImplementation(() => createConversationChain(data)),
+            insert: vi.fn().mockImplementation((records: any) => createConversationChain(records)),
+            update: vi.fn().mockImplementation((updates: any) => createConversationChain(updates)),
+            range: vi.fn().mockImplementation(() => createConversationChain(data)),
+            order: vi.fn().mockImplementation(() => createConversationChain(data)),
+            limit: vi.fn().mockImplementation(() => createConversationChain(data)),
+            single: vi.fn().mockImplementation(() => createConversationChain(data)),
+            then: (onFulfilled: any, onRejected?: any) =>
+              Promise.resolve({ data, error: null }).then(onFulfilled, onRejected),
+            catch: (onRejected: any) =>
+              Promise.resolve({ data, error: null }).catch(onRejected),
+          });
+          return createConversationChain(mockConversation);
         } else if (table === 'messages') {
-          return createMockPostgrestQuery([]);
+          // Return a query chain that can handle inserts and filters
+          const createMessagesChain = (
+            data: any = null,
+            inInsertFlow = false,
+            filterColumn?: string,
+            filterValue?: any,
+            orderField = 'created_at',
+            orderAsc = true,
+            limitValue = 999999
+          ) => ({
+            select: vi.fn().mockImplementation(() =>
+              createMessagesChain(data, inInsertFlow, filterColumn, filterValue, orderField, orderAsc, limitValue)
+            ),
+            eq: vi.fn().mockImplementation((column: string, value: any) =>
+              createMessagesChain(data, false, column, value, orderField, orderAsc, limitValue)
+            ),
+            is: vi.fn().mockImplementation(() =>
+              createMessagesChain(data, inInsertFlow, filterColumn, filterValue, orderField, orderAsc, limitValue)
+            ),
+            or: vi.fn().mockImplementation(() =>
+              createMessagesChain(data, inInsertFlow, filterColumn, filterValue, orderField, orderAsc, limitValue)
+            ),
+            gte: vi.fn().mockImplementation(() =>
+              createMessagesChain(data, inInsertFlow, filterColumn, filterValue, orderField, orderAsc, limitValue)
+            ),
+            lte: vi.fn().mockImplementation(() =>
+              createMessagesChain(data, inInsertFlow, filterColumn, filterValue, orderField, orderAsc, limitValue)
+            ),
+            in: vi.fn().mockImplementation(() =>
+              createMessagesChain(data, inInsertFlow, filterColumn, filterValue, orderField, orderAsc, limitValue)
+            ),
+            insert: vi.fn().mockImplementation((records: any) => {
+              insertedMessages.push(...records);
+              return createMessagesChain(records, true, filterColumn, filterValue, orderField, orderAsc, limitValue);
+            }),
+            update: vi.fn().mockImplementation((updates: any) =>
+              createMessagesChain(updates, false, filterColumn, filterValue, orderField, orderAsc, limitValue)
+            ),
+            range: vi.fn().mockImplementation(() =>
+              createMessagesChain(data, inInsertFlow, filterColumn, filterValue, orderField, orderAsc, limitValue)
+            ),
+            order: vi.fn().mockImplementation((field: string, opts?: any) =>
+              createMessagesChain(data, inInsertFlow, filterColumn, filterValue, field, opts?.ascending !== false, limitValue)
+            ),
+            limit: vi.fn().mockImplementation((n: number) =>
+              createMessagesChain(data, inInsertFlow, filterColumn, filterValue, orderField, orderAsc, n)
+            ),
+            single: vi.fn().mockImplementation(() =>
+              createMessagesChain(
+                data && Array.isArray(data) ? data[0] : data,
+                inInsertFlow,
+                filterColumn,
+                filterValue,
+                orderField,
+                orderAsc,
+                limitValue
+              )
+            ),
+            then: (onFulfilled: any, onRejected?: any) => {
+              let finalData: any;
+
+              if (inInsertFlow) {
+                // For insert flows, return the inserted record directly
+                finalData = data;
+              } else {
+                // For select flows, apply filters
+                let result = insertedMessages;
+                if (filterColumn && filterValue !== undefined) {
+                  result = result.filter((m: any) => m[filterColumn] === filterValue);
+                }
+                // Apply ordering
+                if (result.length > 0) {
+                  result = result.sort((a: any, b: any) => {
+                    const aVal = a[orderField];
+                    const bVal = b[orderField];
+                    if (orderAsc) {
+                      return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+                    } else {
+                      return bVal < aVal ? -1 : bVal > aVal ? 1 : 0;
+                    }
+                  });
+                }
+                // Apply limit
+                result = result.slice(0, limitValue);
+                finalData = result;
+              }
+
+              return Promise.resolve({ data: finalData, error: null }).then(onFulfilled, onRejected);
+            },
+            catch: (onRejected: any) =>
+              Promise.resolve({ data: inInsertFlow ? data : insertedMessages, error: null }).catch(onRejected),
+          });
+          return createMessagesChain();
         } else if (table === 'audit_log') {
           return createMockPostgrestQuery([]);
         }

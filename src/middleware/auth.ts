@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import { getEnv } from '@config/env';
 import { getLogger } from '@utils/logger';
@@ -22,7 +23,16 @@ export function requireApiKey(req: Request, res: Response, next: NextFunction): 
   const providedKey = parts[1];
   const expectedKey = getEnv().UI_API_KEY;
 
-  if (providedKey !== expectedKey) {
+  // Use timing-safe comparison to prevent timing attacks
+  let isValid = false;
+  try {
+    isValid = crypto.timingSafeEqual(Buffer.from(providedKey), Buffer.from(expectedKey));
+  } catch {
+    // timingSafeEqual throws if buffers have different lengths
+    isValid = false;
+  }
+
+  if (!isValid) {
     logger.warn('Invalid API key');
     res.status(401).json({ success: false, error: 'unauthorized', message: 'Invalid API key' });
     return;
