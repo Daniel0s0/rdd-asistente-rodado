@@ -19,8 +19,8 @@ export interface CasoModificacionPayload {
 
 export interface CasoCierrePayload {
   causa_id: string;
+  sub_etapa: 'Acuerdo' | 'Pago' | 'Desistimiento' | 'Caducada';
   fecha_cierre?: string;
-  motivo?: string;
   timestamp?: string;
 }
 

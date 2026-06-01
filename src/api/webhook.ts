@@ -120,10 +120,19 @@ function validateCierrePayload(payload: unknown): CasoCierrePayload {
     throw new ValidationError('causa_id es requerido');
   }
 
+  if (!p.sub_etapa || typeof p.sub_etapa !== 'string') {
+    throw new ValidationError('sub_etapa es requerido');
+  }
+
+  const validSubEtapas = ['Acuerdo', 'Pago', 'Desistimiento', 'Caducada'];
+  if (!validSubEtapas.includes(p.sub_etapa as string)) {
+    throw new ValidationError(`sub_etapa inválida: ${p.sub_etapa}. Valores válidos: ${validSubEtapas.join(', ')}`);
+  }
+
   return {
     causa_id: p.causa_id,
+    sub_etapa: p.sub_etapa as CasoCierrePayload['sub_etapa'],
     fecha_cierre: typeof p.fecha_cierre === 'string' ? p.fecha_cierre : undefined,
-    motivo: typeof p.motivo === 'string' ? p.motivo : undefined,
     timestamp: typeof p.timestamp === 'string' ? p.timestamp : undefined,
   };
 }
@@ -333,7 +342,8 @@ export async function webhookCasoModificacionHandler(
 
 /**
  * POST /webhook/caso-cierre
- * SaaS webhook #3: cierra conversación.
+ * SaaS webhook #3: maneja cierre de caso con sub_etapa.
+ * Lógica: Acuerdo → mantener activa; Pago/Desistimiento/Caducada → cerrar
  */
 export async function webhookCasoCierreHandler(
   req: Request,
@@ -352,19 +362,51 @@ export async function webhookCasoCierreHandler(
       throw new NotFoundError(`Causa ${cierre.causa_id} no encontrada en DB`);
     }
 
-    // Cerrar conversación
-    await closeConversation(conversation.id, 'webhook_sistema');
+    // Mapeo de sub_etapa SaaS → motivo_cierre RDD
+    const CIERRE_MOTIVO_MAP: Record<CasoCierrePayload['sub_etapa'], string | null> = {
+      Acuerdo: null,              // RDD mantiene activa, espera pagos
+      Pago: 'pago_total',
+      Desistimiento: 'desistimiento',
+      Caducada: 'caducada',
+    };
 
-    logger.info(
-      { causaId: cierre.causa_id, conversationId: conversation.id },
-      'Webhook caso-cierre processed'
-    );
+    const motivo = CIERRE_MOTIVO_MAP[cierre.sub_etapa];
 
-    res.status(200).json({
-      success: true,
-      causa_id: cierre.causa_id,
-      message: 'Caso cerrado',
-    });
+    if (motivo === null) {
+      // Cierre por Acuerdo: SaaS dice cerrada pero RDD mantiene activa
+      await updateConversationMetadata(conversation.id, {
+        sub_etapa_saas: 'Acuerdo',
+      });
+      logger.info(
+        { causaId: cierre.causa_id },
+        'Webhook caso-cierre: Acuerdo — mantener activa en RDD'
+      );
+      res.status(200).json({
+        success: true,
+        causa_id: cierre.causa_id,
+        rdd_action: 'kept_active',
+        message: 'Causa mantiene estado activo en RDD — esperando términos del acuerdo',
+      });
+    } else {
+      // Cierre real: actualizar case_state y motivo_cierre
+      await updateConversationMetadata(conversation.id, {
+        case_state: 'cerrada',
+        motivo_cierre: motivo,
+        sub_etapa_saas: cierre.sub_etapa,
+      });
+      await closeConversation(conversation.id, 'webhook_sistema');
+      logger.info(
+        { causaId: cierre.causa_id, motivo },
+        'Webhook caso-cierre: causa cerrada'
+      );
+      res.status(200).json({
+        success: true,
+        causa_id: cierre.causa_id,
+        rdd_action: 'closed',
+        motivo_cierre: motivo,
+        message: 'Causa cerrada en RDD',
+      });
+    }
   } catch (error) {
     if (error instanceof UnauthorizedError) {
       logger.warn(

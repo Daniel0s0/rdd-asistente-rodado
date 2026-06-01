@@ -24,6 +24,7 @@ vi.mock('@database/models', () => ({
     closed_at: null,
     metadata: {},
   }),
+  updateConversationMetadata: vi.fn().mockResolvedValue({}),
   closeConversation: vi.fn().mockResolvedValue({
     id: 'mock-conversation-uuid',
     closed_at: new Date(),
@@ -113,7 +114,7 @@ describe('webhookCasoCierreHandler', () => {
     const { getConversationByCausaId } = await import('@database/models');
     vi.mocked(getConversationByCausaId).mockResolvedValueOnce(null as any);
 
-    const body = { causa_id: 'nonexistent-causa' };
+    const body = { causa_id: 'nonexistent-causa', sub_etapa: 'Pago' };
     const signature = generateSignature(body);
     const req = createRequest(body, signature) as any;
     const res = createResponse() as any;
@@ -135,8 +136,8 @@ describe('webhookCasoCierreHandler', () => {
 
     const body = {
       causa_id: 'test-123',
+      sub_etapa: 'Pago',
       fecha_cierre: '2026-05-30',
-      motivo: 'Sentencia favorable',
     };
     const signature = generateSignature(body);
     const req = createRequest(body, signature) as any;
@@ -149,7 +150,8 @@ describe('webhookCasoCierreHandler', () => {
       expect.objectContaining({
         success: true,
         causa_id: 'test-123',
-        message: 'Caso cerrado',
+        rdd_action: 'closed',
+        motivo_cierre: 'pago_total',
       })
     );
 
@@ -160,7 +162,7 @@ describe('webhookCasoCierreHandler', () => {
   });
 
   it('handles optional fields gracefully', async () => {
-    const body = { causa_id: 'test-123' };
+    const body = { causa_id: 'test-123', sub_etapa: 'Desistimiento' };
     const signature = generateSignature(body);
     const req = createRequest(body, signature) as any;
     const res = createResponse() as any;
@@ -172,7 +174,52 @@ describe('webhookCasoCierreHandler', () => {
       expect.objectContaining({
         success: true,
         causa_id: 'test-123',
-        message: 'Caso cerrado',
+        rdd_action: 'closed',
+        motivo_cierre: 'desistimiento',
+      })
+    );
+  });
+
+  it('keeps conversation active for Acuerdo sub_etapa', async () => {
+    const { updateConversationMetadata } = await import('@database/models');
+    vi.mocked(updateConversationMetadata).mockClear();
+
+    const body = { causa_id: 'test-123', sub_etapa: 'Acuerdo' };
+    const signature = generateSignature(body);
+    const req = createRequest(body, signature) as any;
+    const res = createResponse() as any;
+
+    await webhookCasoCierreHandler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        causa_id: 'test-123',
+        rdd_action: 'kept_active',
+      })
+    );
+
+    expect(updateConversationMetadata).toHaveBeenCalledWith(
+      'mock-conversation-uuid',
+      expect.objectContaining({ sub_etapa_saas: 'Acuerdo' })
+    );
+  });
+
+  it('rejects invalid sub_etapa', async () => {
+    const body = { causa_id: 'test-123', sub_etapa: 'InvalidEtapa' };
+    const signature = generateSignature(body);
+    const req = createRequest(body, signature) as any;
+    const res = createResponse() as any;
+
+    await webhookCasoCierreHandler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: false,
+        error: 'validation_error',
+        message: expect.stringContaining('sub_etapa inválida'),
       })
     );
   });
