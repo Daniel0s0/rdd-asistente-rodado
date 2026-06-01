@@ -1382,3 +1382,102 @@ All tests use mocked `listConversations` and `@config/env`.
 - ✅ Ready for deployment
 
 ---
+
+## May 31, 2026 (Evening) — Phase 7 Complete + Agent Capability Gap Identified
+
+### Status
+**Phase 7: ✅ COMPLETE** — Manual Financial Entry + Case Detail View (commit 17b174d)  
+**Critical Finding: Agent Needs Tool Use** — Blocking user feedback on agent capabilities
+
+### Problem Identified
+
+**User Feedback:** Agent responds "no tengo capacidad de actualizar el sistema del estudio"
+
+**Root Cause Analysis:**
+The agent's current architecture uses **implicit intent parsing + automatic action execution**, but:
+- ✅ Backend actions work: createAcuerdo, createRegistro, markCuotaPagada all functional
+- ✅ Intent detection works: parseUserIntent() correctly identifies "acuerdo", "pago", etc.
+- ✅ Data extraction works: extractFinancialData() parses numbers and dates accurately
+- ✅ Supabase integration works: executeSuperparserAction() writes successfully to DB
+- ❌ System prompt is silent on capabilities: Doesn't tell Claude "you can create agreements"
+- ❌ No Tool Use: Claude SDK has no explicit `tools` parameter defined
+- ❌ Agent lacks confidence: Responds "no puedo" instead of "voy a registrar eso"
+
+**Why This Matters:**
+- Current flow: User → intent parsing → data extraction → action execution → response
+- Claude only sees: (system prompt + conversation)
+- Claude does NOT know it HAS tools to execute; so it hedges ("I cannot")
+- System prompt says "EXTRACCIÓN DE DATOS" but nothing about "EJECUCIÓN DE ACCIONES"
+
+### Decisions Made
+
+**D23: Implement Tool Use (Claude SDK) for Agent Actions**
+- Chose: Add explicit `tools` parameter to `client.messages.create()` calls
+- Reason: (1) Gives agent confidence via explicit capabilities; (2) Clear action surface; (3) Matches Claude patterns
+- Trade-off: ~200-300 LOC added to claude-agent.ts; temporarily has both parseUserIntent + tools
+- Impact: Agent will say "Voy a registrar..." instead of "No puedo"; user feedback resolved
+- Timeline: Phase 8.1 (implement tool use); Phase 8.2 (remove parseUserIntent if tools prove sufficient)
+- Design: Define 5-6 tools: create_registro, create_acuerdo, mark_cuota_pagada, get_caso_estado, close_case, etc.
+
+**D24: Gradual Migration (Keep Old System Temporarily)**
+- Chose: Add tools alongside parseUserIntent → test → remove old system after validation
+- Reason: Reduces risk; existing code already works; tools = enhancement not replacement
+- Trade-off: Two parallel systems for 1 phase; technical debt but manageable
+- Impact: If tools work → delete parseUserIntent in Phase 8.2; if not → rollback is trivial
+- Timeline: 8.1 (add tools), 8.2 (measure + decide), 8.3+ (clean up)
+
+### Learnings
+
+**L26: Implicit Capability ≠ Explicit Tool Use**
+- What happened: Built intent parsing + execution, assumed agent would infer it can execute actions
+- Wrong assumption: Agent doesn't know what it CAN do unless system prompt says so (explicitly via tools)
+- How Claude SDK works: `tools` parameter = "here are actions you can take"; without it, agent has no action surface
+- Lesson: Any agent capability must be either (a) explicit in system prompt OR (b) explicit via tools
+- Impact: For RDD: All financial actions (create, update, mark paid) need tools + prompt alignment
+
+**L27: System Prompt is Contract Between You and Claude**
+- If system prompt says "you can extract datos", Claude will try
+- If system prompt says "you can execute acciones", Claude will try
+- If system prompt silent on capability, Claude hedges/declines
+- Current RDD prompt: Says "extract" but nothing about "execute" → agent declines to execute
+- Future: Always write system prompt FIRST (define capabilities), then code backend to match
+
+### Blockers
+
+**B6: Agent Confidence Gap (UX Issue)**
+- Scenario: User: "Registra $500k en 5 cuotas" → Agent: "No tengo capacidad"
+- Impact: Users think system is broken; they try chat instead of UI form
+- Solution: Implement Tool Use (Phase 8.1) to give agent explicit action surface
+- Urgency: High (blocks user feedback loop); resolved by design in Phase 8.1
+
+### Next Steps (Phase 8.1)
+
+1. **Design Tools** (5-6 core actions):
+   - create_registro (cobranza/honorarios/gasto/sentencia)
+   - create_acuerdo (agreement with cuotas)
+   - mark_cuota_pagada (payment received)
+   - get_caso_estado (query case status)
+   - close_case (mark case closed)
+
+2. **Implement Tool Use**:
+   - Define tool schemas (inputs, outputs)
+   - Add to system prompt
+   - Add tool call handler in chat() and chatStream()
+   - Implement tool execution (calls existing DB functions)
+
+3. **Test & Validate**:
+   - User: "Acuerdo $500k 5 cuotas" → Agent calls create_acuerdo tool → Success
+   - User: "Cobré $250k" → Agent calls create_registro tool → Success
+   - Verify agent says "Voy a registrar..." not "No puedo"
+
+4. **Commit & Document**:
+   - Update PROGRESS.md with implementation details
+   - Update CLAUDE.md if agent patterns change
+   - Commit with clear message (feat: Agent Tool Use for financial actions)
+
+### Commits
+```
+(None yet — Phase 8.1 planning)
+```
+
+---
