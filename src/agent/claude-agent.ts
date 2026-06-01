@@ -246,6 +246,7 @@ export class ClaudeAgent {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const currentMessages: any[] = [...claudeMessages]; // Copy for loop iterations (typed broadly to support tool_use/tool_result content)
     let toolUseOccurred = false;
+    const executedTools: string[] = []; // Track which tools were called
 
     let response = claudeResponse;
     while (true) {
@@ -274,6 +275,9 @@ export class ClaudeAgent {
       }
 
       toolUseOccurred = true;
+      // Track executed tools for later intent detection
+      executedTools.push(...toolUseBlocks.map((b) => b.name));
+
       logger.debug(
         { conversationId: conversation.id, toolCount: toolUseBlocks.length },
         'chat: tool use detected, processing'
@@ -346,12 +350,31 @@ export class ClaudeAgent {
     }
 
     // ── 8. Parse assistant response ──────────────────────────────────────────
-    // If tools were executed, skip old-style parsing
+    // Derive intent and financial data from tool execution or fallback parsing
     let parsedIntent: Intent = userIntent;
     let financialData: FinancialData | undefined;
 
-    if (!toolUseOccurred) {
-      // Fallback to old parsing for backwards compatibility
+    if (toolUseOccurred) {
+      // Derive intent from executed tools
+      if (executedTools.includes('create_acuerdo')) {
+        parsedIntent = 'acuerdo';
+      } else if (executedTools.includes('mark_cuota_pagada')) {
+        parsedIntent = 'pago';
+      } else if (executedTools.includes('create_registro')) {
+        // create_registro is a financial action, but intent stays 'pago' or 'consulta'
+        // based on context. For now, treat it like 'pago' (income-related)
+        parsedIntent = 'pago';
+      } else if (executedTools.includes('close_case')) {
+        parsedIntent = 'cierre';
+      }
+      // If other tools executed (get_caso_estado, etc.) but no financial tool,
+      // keep userIntent as-is
+      logger.debug(
+        { executedTools, derivedIntent: parsedIntent },
+        'chat: intent derived from tool execution'
+      );
+    } else {
+      // Fallback to old parsing for backwards compatibility (no tools executed)
       const parsed = this.parseAssistantResponse(assistantContent, userIntent);
       parsedIntent = parsed.intent;
       financialData = parsed.data;
@@ -396,7 +419,14 @@ export class ClaudeAgent {
     }
 
     // ── 11. Update conversation state if agreement/payment ─────────────────
-    const shouldSyncSheets = parsedIntent === 'acuerdo' || parsedIntent === 'pago';
+    // shouldSyncSheets = true when financial tools were executed (acuerdo, pago, registro)
+    // or when parsed intent indicates financial action
+    const shouldSyncSheets =
+      parsedIntent === 'acuerdo' ||
+      parsedIntent === 'pago' ||
+      (toolUseOccurred && executedTools.some((t) =>
+        ['create_acuerdo', 'mark_cuota_pagada', 'create_registro'].includes(t)
+      ));
 
     if (shouldSyncSheets && financialData) {
       const updates: Partial<Conversation> = {};
@@ -571,6 +601,7 @@ export class ClaudeAgent {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const currentMessages: any[] = [...claudeMessages];
     let toolUseOccurred = false;
+    const executedTools: string[] = []; // Track which tools were called
 
     // Tool use loop (same as chat())
     let response = finalMessage;
@@ -598,6 +629,9 @@ export class ClaudeAgent {
       }
 
       toolUseOccurred = true;
+      // Track executed tools for later intent detection
+      executedTools.push(...toolUseBlocks.map((b) => b.name));
+
       logger.debug(
         { conversationId: conversation.id, toolCount: toolUseBlocks.length },
         'chatStream: tool use detected, processing'
@@ -670,10 +704,31 @@ export class ClaudeAgent {
     finalMessage = response;
 
     // ── 8. Parse assistant response ──────────────────────────────────────────
+    // Derive intent and financial data from tool execution or fallback parsing
     let parsedIntent: Intent = userIntent;
     let financialData: FinancialData | undefined;
 
-    if (!toolUseOccurred) {
+    if (toolUseOccurred) {
+      // Derive intent from executed tools
+      if (executedTools.includes('create_acuerdo')) {
+        parsedIntent = 'acuerdo';
+      } else if (executedTools.includes('mark_cuota_pagada')) {
+        parsedIntent = 'pago';
+      } else if (executedTools.includes('create_registro')) {
+        // create_registro is a financial action, but intent stays 'pago' or 'consulta'
+        // based on context. For now, treat it like 'pago' (income-related)
+        parsedIntent = 'pago';
+      } else if (executedTools.includes('close_case')) {
+        parsedIntent = 'cierre';
+      }
+      // If other tools executed (get_caso_estado, etc.) but no financial tool,
+      // keep userIntent as-is
+      logger.debug(
+        { executedTools, derivedIntent: parsedIntent },
+        'chatStream: intent derived from tool execution'
+      );
+    } else {
+      // Fallback to old parsing for backwards compatibility (no tools executed)
       const parsed = this.parseAssistantResponse(assistantContent, userIntent);
       parsedIntent = parsed.intent;
       financialData = parsed.data;
@@ -718,7 +773,14 @@ export class ClaudeAgent {
     }
 
     // ── 11. Update conversation state if agreement/payment ─────────────────
-    const shouldSyncSheets = parsedIntent === 'acuerdo' || parsedIntent === 'pago';
+    // shouldSyncSheets = true when financial tools were executed (acuerdo, pago, registro)
+    // or when parsed intent indicates financial action
+    const shouldSyncSheets =
+      parsedIntent === 'acuerdo' ||
+      parsedIntent === 'pago' ||
+      (toolUseOccurred && executedTools.some((t) =>
+        ['create_acuerdo', 'mark_cuota_pagada', 'create_registro'].includes(t)
+      ));
 
     if (shouldSyncSheets && financialData) {
       const updates: Partial<Conversation> = {};
