@@ -478,9 +478,11 @@ export async function webhookCasoEtapaHandler(
     // Mapear etapa del SaaS a RDD
     const etapaRdd = etapaCambio.etapa_nueva === 'Cobranza' ? 'cobranza' : 'litigacion';
 
+    const isAcuerdo = etapaCambio.sub_etapa_nueva === 'Acuerdo';
     await updateConversationMetadata(conversation.id, {
       etapa: etapaRdd,
       sub_etapa_saas: etapaCambio.sub_etapa_nueva ?? null,
+      ...(isAcuerdo ? { pending_action: 'ask_acuerdo_terms' } : {}),
     });
 
     logger.info(

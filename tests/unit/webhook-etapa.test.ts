@@ -291,4 +291,54 @@ describe('webhookCasoEtapaHandler', () => {
       })
     );
   });
+
+  it('sets pending_action when sub_etapa_nueva is Acuerdo', async () => {
+    const { updateConversationMetadata } = await import('@database/models');
+    vi.mocked(updateConversationMetadata).mockClear();
+
+    const body = {
+      causa_id: 'test-123',
+      etapa_nueva: 'Cobranza',
+      sub_etapa_nueva: 'Acuerdo',
+    };
+    const signature = generateSignature(body);
+    const req = createRequest(body, signature) as any;
+    const res = createResponse() as any;
+
+    await webhookCasoEtapaHandler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(updateConversationMetadata).toHaveBeenCalledWith(
+      'mock-conversation-uuid',
+      {
+        etapa: 'cobranza',
+        sub_etapa_saas: 'Acuerdo',
+        pending_action: 'ask_acuerdo_terms',
+      }
+    );
+  });
+
+  it('does NOT set pending_action for non-Acuerdo sub_etapa', async () => {
+    const { updateConversationMetadata } = await import('@database/models');
+    vi.mocked(updateConversationMetadata).mockClear();
+
+    const body = {
+      causa_id: 'test-123',
+      etapa_nueva: 'Cobranza',
+      sub_etapa_nueva: 'Ingreso',
+    };
+    const signature = generateSignature(body);
+    const req = createRequest(body, signature) as any;
+    const res = createResponse() as any;
+
+    await webhookCasoEtapaHandler(req, res);
+
+    expect(updateConversationMetadata).toHaveBeenCalledWith(
+      'mock-conversation-uuid',
+      {
+        etapa: 'cobranza',
+        sub_etapa_saas: 'Ingreso',
+      }
+    );
+  });
 });
