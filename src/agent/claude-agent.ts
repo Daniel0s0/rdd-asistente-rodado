@@ -19,11 +19,6 @@ import {
   createMessage,
   updateConversationMetadata,
   createSimpleConversation,
-  createAcuerdo,
-  createCuotas,
-  createRegistro,
-  markCuotaPagada,
-  getAcuerdosActivos,
 } from '@database/models';
 import { Conversation } from '@database/schema';
 import { AgentResponse, SheetsSyncData, PortfolioAgentResponse } from '@domain/agent';
@@ -81,76 +76,6 @@ export class TemporaryError extends Error {
 
 interface AnthropicAPIError extends Error {
   status?: number;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Supabase Actions (Fase 6.2)
-// ─────────────────────────────────────────────────────────────────────────────
-
-function calculateCuotaDates(
-  fechaPrimerPago: string,
-  cuotasTotal: number
-): string[] {
-  const dates: string[] = [];
-  const firstDate = new Date(fechaPrimerPago);
-
-  for (let i = 0; i < cuotasTotal; i++) {
-    const date = new Date(firstDate);
-    date.setMonth(date.getMonth() + i);
-    const yyyy = date.getFullYear();
-    const mm = String(date.getMonth() + 1).padStart(2, '0');
-    const dd = String(date.getDate()).padStart(2, '0');
-    dates.push(`${yyyy}-${mm}-${dd}`);
-  }
-
-  return dates;
-}
-
-async function executeSuperparserAction(
-  conversationId: string,
-  intent: Intent,
-  financialData: FinancialData
-): Promise<void> {
-  if (intent === 'acuerdo' && financialData.monto && financialData.cuotas && financialData.fecha) {
-    const montoPorCuota = financialData.monto / financialData.cuotas;
-    const acuerdo = await createAcuerdo({
-      conversationId,
-      montoTotal: financialData.monto,
-      cuotasTotal: financialData.cuotas,
-      montoPorCuota,
-      porcentajeHonorarios: financialData.porcentajeHonorarios ?? 0,
-      fechaPrimerPago: financialData.fecha,
-    });
-
-    const cuotaDates = calculateCuotaDates(financialData.fecha, financialData.cuotas);
-    const cuotasToCreate = cuotaDates.map((fecha, idx) => ({
-      numero: idx + 1,
-      monto: montoPorCuota,
-      fechaVencimiento: fecha,
-    }));
-
-    await createCuotas(acuerdo.id, cuotasToCreate);
-    logger.info({ conversationId, acuerdoId: acuerdo.id }, 'Acuerdo + cuotas created in Supabase');
-  } else if (intent === 'pago' && financialData.monto && financialData.fecha) {
-    const acuerdosActivos = await getAcuerdosActivos(conversationId);
-
-    if (acuerdosActivos.length > 0) {
-      const acuerdo = acuerdosActivos[0];
-      const numeroCuota = 1;
-      await markCuotaPagada(acuerdo.id, numeroCuota, financialData.fecha);
-      logger.info({ conversationId, acuerdoId: acuerdo.id }, 'Cuota marked as paid in Supabase');
-    } else {
-      const tipo =
-        financialData.monto > 0 && !financialData.cuotas ? 'cobranza' : 'sentencia';
-      await createRegistro({
-        conversationId,
-        tipo,
-        monto: financialData.monto,
-        fecha: financialData.fecha,
-      });
-      logger.info({ conversationId }, 'Registro created in Supabase');
-    }
-  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -557,28 +482,27 @@ export class ClaudeAgent {
     // ── 7. Call Claude SDK with streaming ───────────────────────────────────
     const systemPrompt = this.buildSystemPrompt(conversation);
 
-    let assistantContent = '';
-    let finalMessage: Awaited<ReturnType<typeof this.client.messages.create>>;
+    let stream: ReturnType<typeof this.client.messages.stream>;
 
     try {
-      const stream = this.client.messages.stream({
+      stream = this.client.messages.stream({
         model: env.CLAUDE_MODEL,
         system: systemPrompt,
         messages: claudeMessages,
         max_tokens: 2048,
+        temperature: env.CLAUDE_TEMPERATURE,
+        tools: AGENT_TOOLS as any,
       });
 
+      // Stream first response tokens (before tool use)
       for await (const event of stream) {
         if (
           event.type === 'content_block_delta' &&
           event.delta.type === 'text_delta'
         ) {
-          assistantContent += event.delta.text;
           onToken(event.delta.text);
         }
       }
-
-      finalMessage = await stream.finalMessage();
     } catch (err: unknown) {
       const apiErr = err instanceof AnthropicAPIError ? err : null;
       const status = apiErr?.status;
@@ -605,11 +529,119 @@ export class ClaudeAgent {
       throw err;
     }
 
+    // ── 7.5 Handle tool use (non-streaming for MVP) ─────────────────────────
+    let finalMessage = await stream.finalMessage();
+    let assistantContent = '';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const currentMessages: any[] = [...claudeMessages];
+    let toolUseOccurred = false;
+
+    // Tool use loop (same as chat())
+    let response = finalMessage;
+    while (true) {
+      const toolUseBlocks: Array<{
+        id: string;
+        name: string;
+        input: Record<string, any>;
+      }> = [];
+
+      for (const contentBlock of response.content) {
+        if (contentBlock.type === 'tool_use') {
+          toolUseBlocks.push({
+            id: contentBlock.id,
+            name: contentBlock.name,
+            input: contentBlock.input as Record<string, any>,
+          });
+        } else if (contentBlock.type === 'text') {
+          assistantContent = contentBlock.text;
+        }
+      }
+
+      if (toolUseBlocks.length === 0) {
+        break;
+      }
+
+      toolUseOccurred = true;
+      logger.debug(
+        { conversationId: conversation.id, toolCount: toolUseBlocks.length },
+        'chatStream: tool use detected, processing'
+      );
+
+      // Execute tools
+      const toolResults = await processToolUseBlocks(
+        toolUseBlocks,
+        conversation.id
+      );
+
+      currentMessages.push({
+        role: 'assistant',
+        content: response.content,
+      });
+
+      const toolResultBlocks = toolResults.map((result) => ({
+        type: 'tool_result' as const,
+        tool_use_id: result.tool_use_id,
+        content: result.content,
+      }));
+
+      currentMessages.push({
+        role: 'user',
+        content: toolResultBlocks,
+      });
+
+      // Continue non-streaming for tool results
+      try {
+        response = await this.client.messages.create({
+          model: env.CLAUDE_MODEL,
+          system: systemPrompt,
+          messages: currentMessages,
+          max_tokens: 2048,
+          temperature: env.CLAUDE_TEMPERATURE,
+          tools: AGENT_TOOLS as any,
+        });
+      } catch (err) {
+        const apiErr = err as AnthropicAPIError;
+        const status = apiErr.status;
+        logger.error(
+          { conversationId: conversation.id, status, error: apiErr.message },
+          'chatStream: Claude API error in tool loop'
+        );
+
+        if (status === 429 || (status !== undefined && status >= 500)) {
+          throw new TemporaryError(
+            `Claude API temporary error (status ${status}): ${apiErr.message}`
+          );
+        }
+        if (status === 401 || status === 403) {
+          throw new ClaudeAPIError(
+            `Claude API auth error (status ${status}): ${apiErr.message}`
+          );
+        }
+        throw err;
+      }
+    }
+
+    // Extract final text
+    if (!assistantContent) {
+      for (const contentBlock of response.content) {
+        if (contentBlock.type === 'text') {
+          assistantContent = contentBlock.text;
+          break;
+        }
+      }
+    }
+
+    finalMessage = response;
+
     // ── 8. Parse assistant response ──────────────────────────────────────────
-    const { intent: parsedIntent, data: financialData } = this.parseAssistantResponse(
-      assistantContent,
-      userIntent
-    );
+    let parsedIntent: Intent = userIntent;
+    let financialData: FinancialData | undefined;
+
+    if (!toolUseOccurred) {
+      const parsed = this.parseAssistantResponse(assistantContent, userIntent);
+      parsedIntent = parsed.intent;
+      financialData = parsed.data;
+    }
 
     const responseType = this.determineResponseType(assistantContent);
     const flags = this.extractFlags(assistantContent);
@@ -623,23 +655,6 @@ export class ClaudeAgent {
           throw new ValidationError(validationErr.message);
         }
         throw validationErr;
-      }
-    }
-
-    // ── 9.5 Execute Supabase actions (Fase 6.2) ───────────────────────────────
-    if (
-      financialData &&
-      Object.keys(financialData).length > 0 &&
-      (parsedIntent === 'acuerdo' || parsedIntent === 'pago')
-    ) {
-      try {
-        await executeSuperparserAction(conversation.id, parsedIntent, financialData);
-      } catch (err) {
-        logger.error(
-          { conversationId: conversation.id, intent: parsedIntent, error: err instanceof Error ? err.message : String(err) },
-          'ClaudeAgent.chatStream: Supabase action failed'
-        );
-        throw err;
       }
     }
 
