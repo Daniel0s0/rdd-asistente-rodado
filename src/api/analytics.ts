@@ -11,13 +11,16 @@
  */
 
 import { Request, Response } from 'express';
+import { z } from 'zod';
 import { logger } from '@utils/logger';
 import {
   getCartKPI,
   getIncomeData,
   getAcuerdosStatus,
   getCaseResults,
+  getCaseDetail,
 } from '@database/analytics-queries';
+import { createRegistro } from '@database/models';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /analytics/cartera
@@ -131,6 +134,98 @@ export async function handleGetResultados(_req: Request, res: Response): Promise
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     logger.error({ error }, 'GET /analytics/resultados: error');
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+    });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /financials/registro
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function handleCreateRegistro(req: Request, res: Response): Promise<void> {
+  try {
+    const schema = z.object({
+      conversation_id: z.string().uuid('Invalid UUID format'),
+      tipo: z.enum(['cobranza', 'honorarios', 'gasto', 'sentencia']),
+      monto: z.number().positive('Monto debe ser mayor a 0'),
+      fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha debe estar en formato YYYY-MM-DD'),
+      notas: z.string().optional(),
+    });
+
+    const body = schema.parse(req.body);
+
+    logger.debug({ conversation_id: body.conversation_id, tipo: body.tipo }, 'POST /financials/registro');
+
+    const data = await createRegistro({
+      conversationId: body.conversation_id,
+      tipo: body.tipo as 'cobranza' | 'honorarios' | 'gasto' | 'sentencia',
+      monto: body.monto,
+      fecha: body.fecha,
+      notas: body.notas,
+    });
+
+    res.status(201).json({
+      success: true,
+      data,
+    });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      logger.warn({ errors: err.errors }, 'POST /financials/registro: validation error');
+      res.status(400).json({
+        success: false,
+        error: 'Validation error',
+        details: err.errors.map((e) => ({ path: e.path.join('.'), message: e.message })),
+      });
+      return;
+    }
+
+    const error = err instanceof Error ? err.message : String(err);
+    logger.error({ error }, 'POST /financials/registro: error');
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+    });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /analytics/case/:causaId
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function handleGetCaseDetail(req: Request, res: Response): Promise<void> {
+  try {
+    const { causaId } = req.params;
+
+    if (!causaId || typeof causaId !== 'string') {
+      res.status(400).json({
+        success: false,
+        error: 'causaId is required',
+      });
+      return;
+    }
+
+    logger.debug({ causaId }, 'GET /analytics/case/:causaId');
+
+    const data = await getCaseDetail(causaId);
+
+    if (!data) {
+      res.status(404).json({
+        success: false,
+        error: 'Case not found',
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      data,
+    });
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    logger.error({ error }, 'GET /analytics/case/:causaId: error');
     res.status(500).json({
       success: false,
       error: 'Internal server error',

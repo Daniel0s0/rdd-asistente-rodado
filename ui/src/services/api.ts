@@ -115,6 +115,7 @@ export interface CarteraKPI {
   causasActivas: number;
   causasDesistidas: number;
   causasCaducadas: number;
+  causasPagadas: number;
 }
 
 export interface IncomeData {
@@ -149,6 +150,7 @@ export interface CaseResults {
   sinResultado: number;
   desistidas: number;
   caducadas: number;
+  pagadas: number;
   activas: number;
 }
 
@@ -262,6 +264,122 @@ export async function getResultados(): Promise<AnalyticsResponse<CaseResults>> {
       headers: {
         'Authorization': `Bearer ${API_KEY}`,
       },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        errorData.message || `HTTP ${response.status}: ${response.statusText}`
+      );
+    }
+
+    return await response.json();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return {
+      success: false,
+      error: message,
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+// Financial Record Management (Phase 7)
+export interface RegistroRecord {
+  id: string;
+  conversation_id: string;
+  tipo: 'cobranza' | 'honorarios' | 'gasto' | 'sentencia';
+  monto: number;
+  fecha: string;
+  notas?: string;
+  created_at: string;
+}
+
+export interface AcuerdoDetail {
+  id: string;
+  monto_total: number;
+  cuotas_total: number;
+  estado: string;
+  cuotas: Array<{
+    numero: number;
+    monto: number;
+    fecha_vencimiento?: string;
+    fecha_pago?: string;
+    estado: string;
+  }>;
+}
+
+export interface CaseDetail {
+  conversation: {
+    id: string;
+    causa_id: string;
+    cliente_nombre?: string;
+    cliente_rut?: string;
+    tribunal?: string;
+    rit?: string;
+    case_state: string;
+    ingreso_honorarios: number;
+    pagos_pendientes: number;
+    created_at: string;
+  };
+  registros: RegistroRecord[];
+  acuerdos: AcuerdoDetail[];
+  totales: {
+    totalCobranza: number;
+    totalHonorarios: number;
+    totalGastos: number;
+    totalSentencias: number;
+  };
+}
+
+export interface CreateRegistroInput {
+  conversation_id: string;
+  tipo: 'cobranza' | 'honorarios' | 'gasto' | 'sentencia';
+  monto: number;
+  fecha: string;
+  notas?: string;
+}
+
+export async function getCaseDetail(causaId: string): Promise<AnalyticsResponse<CaseDetail>> {
+  const url = `${API_URL}/analytics/case/${causaId}`;
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${API_KEY}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        errorData.message || `HTTP ${response.status}: ${response.statusText}`
+      );
+    }
+
+    return await response.json();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return {
+      success: false,
+      error: message,
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+export async function createRegistro(input: CreateRegistroInput): Promise<AnalyticsResponse<RegistroRecord>> {
+  const url = `${API_URL}/financials/registro`;
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${API_KEY}`,
+      },
+      body: JSON.stringify(input),
     });
 
     if (!response.ok) {

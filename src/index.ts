@@ -19,6 +19,8 @@ import {
   handleGetIngresos,
   handleGetAcuerdos,
   handleGetResultados,
+  handleCreateRegistro,
+  handleGetCaseDetail,
 } from '@api/analytics';
 import { registerSocketHandlers } from '@api/socket-handler';
 import { requireApiKey } from '@middleware/auth';
@@ -61,6 +63,8 @@ function main() {
   app.get('/analytics/ingresos', requireApiKey, handleGetIngresos);
   app.get('/analytics/acuerdos', requireApiKey, handleGetAcuerdos);
   app.get('/analytics/resultados', requireApiKey, handleGetResultados);
+  app.post('/financials/registro', requireApiKey, handleCreateRegistro);
+  app.get('/analytics/case/:causaId', requireApiKey, handleGetCaseDetail);
 
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
     logger.error({ error: err.message, stack: err.stack }, 'Unhandled error');

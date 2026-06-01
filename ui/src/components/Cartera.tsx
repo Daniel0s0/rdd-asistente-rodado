@@ -5,6 +5,7 @@ import KPICards from './cartera/KPICards';
 import IngresosTab from './cartera/IngresosTab';
 import AcuerdosTab from './cartera/AcuerdosTab';
 import ResultadosTab from './cartera/ResultadosTab';
+import CaseDetailView from './cartera/CaseDetailView';
 
 type TabType = 'ingresos' | 'acuerdos' | 'resultados';
 
@@ -20,6 +21,7 @@ export default function Cartera({ onOpenChat }: CarteraProps) {
   const [resultadosData, setResultadosData] = useState<CaseResults | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [selectedCausaId, setSelectedCausaId] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -93,45 +95,57 @@ export default function Cartera({ onOpenChat }: CarteraProps) {
           </div>
         )}
 
-        {/* KPI Cards */}
-        {kpiData && <KPICards data={kpiData} loading={loading} />}
+        {/* Case Detail View */}
+        {selectedCausaId && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <CaseDetailView causaId={selectedCausaId} onClose={() => setSelectedCausaId(null)} />
+          </div>
+        )}
 
-        {/* Tabs */}
-        <div className="bg-white rounded-lg shadow">
-          {/* Tab buttons */}
-          <div className="border-b border-gray-200">
-            <div className="flex">
-              {(['ingresos', 'acuerdos', 'resultados'] as const).map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-6 py-4 font-medium text-sm transition-colors ${
-                    activeTab === tab
-                      ? 'text-blue-600 border-b-2 border-blue-600'
-                      : 'text-gray-700 hover:text-gray-900'
-                  }`}
-                >
-                  {tab === 'ingresos' && 'Ingresos'}
-                  {tab === 'acuerdos' && 'Acuerdos'}
-                  {tab === 'resultados' && 'Resultados'}
-                </button>
-              ))}
+        {/* KPI Cards and Tabs */}
+        {!selectedCausaId && (
+          <>
+            {/* KPI Cards */}
+            {kpiData && <KPICards data={kpiData} loading={loading} />}
+
+            {/* Tabs */}
+            <div className="bg-white rounded-lg shadow">
+              {/* Tab buttons */}
+              <div className="border-b border-gray-200">
+                <div className="flex">
+                  {(['ingresos', 'acuerdos', 'resultados'] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab)}
+                      className={`px-6 py-4 font-medium text-sm transition-colors ${
+                        activeTab === tab
+                          ? 'text-blue-600 border-b-2 border-blue-600'
+                          : 'text-gray-700 hover:text-gray-900'
+                      }`}
+                    >
+                      {tab === 'ingresos' && 'Ingresos'}
+                      {tab === 'acuerdos' && 'Acuerdos'}
+                      {tab === 'resultados' && 'Resultados'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tab content */}
+              <div className="p-6">
+                {activeTab === 'ingresos' && incomeData && (
+                  <IngresosTab data={incomeData} loading={loading} />
+                )}
+                {activeTab === 'acuerdos' && acuerdosData && (
+                  <AcuerdosTab data={acuerdosData} loading={loading} onSelectCausa={setSelectedCausaId} />
+                )}
+                {activeTab === 'resultados' && resultadosData && (
+                  <ResultadosTab data={resultadosData} loading={loading} />
+                )}
+              </div>
             </div>
-          </div>
-
-          {/* Tab content */}
-          <div className="p-6">
-            {activeTab === 'ingresos' && incomeData && (
-              <IngresosTab data={incomeData} loading={loading} />
-            )}
-            {activeTab === 'acuerdos' && acuerdosData && (
-              <AcuerdosTab data={acuerdosData} loading={loading} />
-            )}
-            {activeTab === 'resultados' && resultadosData && (
-              <ResultadosTab data={resultadosData} loading={loading} />
-            )}
-          </div>
-        </div>
+          </>
+        )}
 
         {/* Refresh button */}
         <div className="mt-6 flex justify-center">

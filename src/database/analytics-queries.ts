@@ -21,6 +21,7 @@ export interface CartKPI {
   causasActivas: number;
   causasDesistidas: number;
   causasCaducadas: number;
+  causasPagadas: number;
 }
 
 export async function getCartKPI(): Promise<CartKPI> {
@@ -87,7 +88,8 @@ export async function getCartKPI(): Promise<CartKPI> {
 
   const { data: conversations, error: conversationsError } = await db
     .from('conversations')
-    .select('id, case_state');
+    .select('id, case_state')
+    .neq('causa_id', '__portfolio__');
 
   if (conversationsError) {
     logger.error({ error: conversationsError.message }, 'getCartKPI: conversations error');
@@ -98,6 +100,7 @@ export async function getCartKPI(): Promise<CartKPI> {
   const causasActivas = convData.filter((c: any) => c.case_state === 'activo').length;
   const causasDesistidas = convData.filter((c: any) => c.case_state === 'desistido').length;
   const causasCaducadas = convData.filter((c: any) => c.case_state === 'caducado').length;
+  const causasPagadas = convData.filter((c: any) => c.case_state === 'pagado').length;
 
   const convWithResult = convData.filter((c: any) => c.case_state !== 'activo').length;
   const porcentajeResultados = convData.length > 0
@@ -113,6 +116,7 @@ export async function getCartKPI(): Promise<CartKPI> {
     causasActivas,
     causasDesistidas,
     causasCaducadas,
+    causasPagadas,
   };
 }
 
@@ -283,6 +287,7 @@ export interface CaseResults {
   sinResultado: number;
   desistidas: number;
   caducadas: number;
+  pagadas: number;
   activas: number;
 }
 
@@ -291,7 +296,8 @@ export async function getCaseResults(): Promise<CaseResults> {
 
   const { data: conversations, error } = await db
     .from('conversations')
-    .select('case_state');
+    .select('case_state')
+    .neq('causa_id', '__portfolio__');
 
   if (error) {
     logger.error({ error: error.message }, 'getCaseResults: error');
@@ -304,7 +310,114 @@ export async function getCaseResults(): Promise<CaseResults> {
   const sinResultado = data.filter((c: any) => c.case_state === 'activo').length;
   const desistidas = data.filter((c: any) => c.case_state === 'desistido').length;
   const caducadas = data.filter((c: any) => c.case_state === 'caducado').length;
+  const pagadas = data.filter((c: any) => c.case_state === 'pagado').length;
   const activas = sinResultado;
 
-  return { total, conResultado, sinResultado, desistidas, caducadas, activas };
+  return { total, conResultado, sinResultado, desistidas, caducadas, pagadas, activas };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Case Detail Query
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface CaseDetail {
+  conversation: {
+    id: string;
+    causa_id: string;
+    cliente_nombre?: string;
+    cliente_rut?: string;
+    tribunal?: string;
+    rit?: string;
+    case_state: string;
+    ingreso_honorarios: number;
+    pagos_pendientes: number;
+    created_at: string;
+  };
+  registros: Array<{ id: string; tipo: string; monto: number; fecha: string; notas?: string; created_at: string }>;
+  acuerdos: Array<{
+    id: string;
+    monto_total: number;
+    cuotas_total: number;
+    estado: string;
+    cuotas: Array<{ numero: number; monto: number; fecha_vencimiento?: string; fecha_pago?: string; estado: string }>;
+  }>;
+  totales: {
+    totalCobranza: number;
+    totalHonorarios: number;
+    totalGastos: number;
+    totalSentencias: number;
+  };
+}
+
+export async function getCaseDetail(causaId: string): Promise<CaseDetail | null> {
+  const db = getDb();
+
+  // 1. Get conversation
+  const { data: conversationData, error: convError } = await db
+    .from('conversations')
+    .select('id, causa_id, cliente_nombre, cliente_rut, tribunal, rit, case_state, ingreso_honorarios, pagos_pendientes, created_at')
+    .eq('causa_id', causaId)
+    .single();
+
+  if (convError || !conversationData) {
+    logger.error({ error: convError?.message, causaId }, 'getCaseDetail: conversation not found');
+    return null;
+  }
+
+  const conversation = conversationData as any;
+  const conversationId = conversation.id;
+
+  // 2. Get registros
+  const { data: registrosData, error: registrosError } = await db
+    .from('registros')
+    .select('id, tipo, monto, fecha, notas, created_at')
+    .eq('conversation_id', conversationId)
+    .order('fecha', { ascending: false });
+
+  if (registrosError) {
+    logger.error({ error: registrosError.message }, 'getCaseDetail: registros error');
+    throw registrosError;
+  }
+
+  const registros = (registrosData || []) as any[];
+
+  // 3. Get acuerdos with cuotas
+  const { data: acuerdosData, error: acuerdosError } = await db
+    .from('acuerdos')
+    .select('id, monto_total, cuotas_total, estado')
+    .eq('conversation_id', conversationId);
+
+  if (acuerdosError) {
+    logger.error({ error: acuerdosError.message }, 'getCaseDetail: acuerdos error');
+    throw acuerdosError;
+  }
+
+  const acuerdosWithCuotas: any[] = [];
+  for (const acuerdo of acuerdosData || []) {
+    const { data: cuotasData } = await db
+      .from('cuotas')
+      .select('numero, monto, fecha_vencimiento, fecha_pago, estado')
+      .eq('acuerdo_id', (acuerdo as any).id)
+      .order('numero', { ascending: true });
+
+    acuerdosWithCuotas.push({
+      ...(acuerdo as any),
+      cuotas: cuotasData || [],
+    });
+  }
+
+  // 4. Calculate totals by tipo
+  const totales = {
+    totalCobranza: registros.filter((r) => r.tipo === 'cobranza').reduce((sum, r) => sum + (r.monto || 0), 0),
+    totalHonorarios: registros.filter((r) => r.tipo === 'honorarios').reduce((sum, r) => sum + (r.monto || 0), 0),
+    totalGastos: registros.filter((r) => r.tipo === 'gasto').reduce((sum, r) => sum + (r.monto || 0), 0),
+    totalSentencias: registros.filter((r) => r.tipo === 'sentencia').reduce((sum, r) => sum + (r.monto || 0), 0),
+  };
+
+  return {
+    conversation,
+    registros,
+    acuerdos: acuerdosWithCuotas,
+    totales,
+  };
 }

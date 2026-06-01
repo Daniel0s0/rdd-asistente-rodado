@@ -3,9 +3,10 @@ import type { AcuerdoStatus } from '../../services/api';
 interface AcuerdosTabProps {
   data: AcuerdoStatus[];
   loading: boolean;
+  onSelectCausa?: (causaId: string) => void;
 }
 
-export default function AcuerdosTab({ data, loading }: AcuerdosTabProps) {
+export default function AcuerdosTab({ data, loading, onSelectCausa }: AcuerdosTabProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-CL', {
       style: 'currency',
@@ -65,6 +66,9 @@ export default function AcuerdosTab({ data, loading }: AcuerdosTabProps) {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                 Estado
               </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                Acciones
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
@@ -84,6 +88,16 @@ export default function AcuerdosTab({ data, loading }: AcuerdosTabProps) {
                   )}
                 </td>
                 <td className="px-6 py-4 text-sm">{getEstadoBadge(acuerdo.estadoGeneral)}</td>
+                <td className="px-6 py-4 text-sm">
+                  {onSelectCausa && (
+                    <button
+                      onClick={() => onSelectCausa(acuerdo.causaId)}
+                      className="text-blue-600 hover:text-blue-800 font-medium underline"
+                    >
+                      Ver detalle
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
