@@ -163,7 +163,13 @@ export interface Conversation {
   monto_demanda?: number;
 
   /** System: canonical case state */
-  case_state: 'activo' | 'acuerdo' | 'archivado' | 'desistido' | 'caducado' | 'pagado';
+  case_state: 'activa' | 'cerrada';
+
+  /** System: why case was closed (pago_total, desistimiento, or caducada) */
+  motivo_cierre?: 'pago_total' | 'desistimiento' | 'caducada' | null;
+
+  /** System: SaaS sub-etapa stored for reference */
+  sub_etapa_saas?: string | null;
 
   /** System: total honorarios generated */
   ingreso_honorarios: number;
