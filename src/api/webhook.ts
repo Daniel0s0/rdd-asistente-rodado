@@ -376,6 +376,7 @@ export async function webhookCasoCierreHandler(
       // Cierre por Acuerdo: SaaS dice cerrada pero RDD mantiene activa
       await updateConversationMetadata(conversation.id, {
         sub_etapa_saas: 'Acuerdo',
+        pending_action: 'ask_acuerdo_terms',
       });
       logger.info(
         { causaId: cierre.causa_id },

@@ -180,7 +180,7 @@ describe('webhookCasoCierreHandler', () => {
     );
   });
 
-  it('keeps conversation active for Acuerdo sub_etapa', async () => {
+  it('keeps conversation active for Acuerdo sub_etapa and sets pending_action', async () => {
     const { updateConversationMetadata } = await import('@database/models');
     vi.mocked(updateConversationMetadata).mockClear();
 
@@ -202,7 +202,7 @@ describe('webhookCasoCierreHandler', () => {
 
     expect(updateConversationMetadata).toHaveBeenCalledWith(
       'mock-conversation-uuid',
-      expect.objectContaining({ sub_etapa_saas: 'Acuerdo' })
+      { sub_etapa_saas: 'Acuerdo', pending_action: 'ask_acuerdo_terms' }
     );
   });
 
@@ -272,10 +272,10 @@ describe('webhookCasoCierreHandler', () => {
       })
     );
 
-    // Verify metadata was updated
+    // Verify metadata was updated with pending_action flag
     expect(updateConversationMetadata).toHaveBeenCalledWith(
       'mock-conversation-uuid',
-      expect.objectContaining({ sub_etapa_saas: 'Acuerdo' })
+      { sub_etapa_saas: 'Acuerdo', pending_action: 'ask_acuerdo_terms' }
     );
 
     // Verify close was NOT called

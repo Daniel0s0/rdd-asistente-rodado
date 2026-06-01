@@ -391,6 +391,10 @@ export class ClaudeAgent {
       }
     );
 
+    if (conversation.pending_action === 'ask_acuerdo_terms') {
+      await updateConversationMetadata(conversation.id, { pending_action: null });
+    }
+
     // ── 11. Update conversation state if agreement/payment ─────────────────
     const shouldSyncSheets = parsedIntent === 'acuerdo' || parsedIntent === 'pago';
 
@@ -709,6 +713,10 @@ export class ClaudeAgent {
       }
     );
 
+    if (conversation.pending_action === 'ask_acuerdo_terms') {
+      await updateConversationMetadata(conversation.id, { pending_action: null });
+    }
+
     // ── 11. Update conversation state if agreement/payment ─────────────────
     const shouldSyncSheets = parsedIntent === 'acuerdo' || parsedIntent === 'pago';
 
@@ -1011,7 +1019,19 @@ RESTRICCIONES:
 - Solo acepta montos > 0
 - Porcentajes entre 0–100%
 - Fechas deben ser hoy o anterior
-- Si datos están inconsistentes, menciona la advertencia pero procede si es razonable`;
+- Si datos están inconsistentes, menciona la advertencia pero procede si es razonable${conversation.pending_action === 'ask_acuerdo_terms' ? `
+
+⚠️ ACCIÓN PENDIENTE — ALTA PRIORIDAD:
+El SaaS registró un Cierre por Acuerdo en esta causa. El usuario aún no ha registrado los términos del acuerdo en RDD.
+
+INSTRUCCIÓN: Antes de procesar el mensaje del usuario, pregunta primero:
+"Vi que llegaste a acuerdo en esta causa 🎉 — ¿me confirmas los términos para registrarlo? Necesito:
+- Monto total del acuerdo
+- Número de cuotas
+- Fecha del primer pago (YYYY-MM-DD)"
+
+Cuando el usuario responda con los datos, usa la herramienta create_acuerdo para registrarlos.
+Luego continúa con cualquier cosa que el usuario haya escrito en su mensaje original.` : ''}`;
   }
 
   /**

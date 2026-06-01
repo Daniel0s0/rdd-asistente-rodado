@@ -171,6 +171,9 @@ export interface Conversation {
   /** System: SaaS sub-etapa stored for reference */
   sub_etapa_saas?: string | null;
 
+  /** System: proactive action pending for agent to ask on next message */
+  pending_action?: 'ask_acuerdo_terms' | null;
+
   /** System: total honorarios generated */
   ingreso_honorarios: number;
 
