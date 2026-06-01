@@ -13,6 +13,7 @@ import {
   CausaWebhookPayload,
   CasoModificacionPayload,
   CasoCierrePayload,
+  CasoEtapaPayload,
   RegistroRow,
 } from '@domain/rdd';
 import { createCaseFolder } from '@drive/client';
@@ -123,6 +124,31 @@ function validateCierrePayload(payload: unknown): CasoCierrePayload {
     causa_id: p.causa_id,
     fecha_cierre: typeof p.fecha_cierre === 'string' ? p.fecha_cierre : undefined,
     motivo: typeof p.motivo === 'string' ? p.motivo : undefined,
+    timestamp: typeof p.timestamp === 'string' ? p.timestamp : undefined,
+  };
+}
+
+function validateEtapaPayload(payload: unknown): CasoEtapaPayload {
+  if (!payload || typeof payload !== 'object') {
+    throw new ValidationError('Invalid payload');
+  }
+
+  const p = payload as Record<string, unknown>;
+
+  if (!p.causa_id || typeof p.causa_id !== 'string') {
+    throw new ValidationError('causa_id es requerido');
+  }
+
+  if (!p.etapa_nueva || typeof p.etapa_nueva !== 'string') {
+    throw new ValidationError('etapa_nueva es requerido');
+  }
+
+  return {
+    causa_id: p.causa_id,
+    etapa_nueva: p.etapa_nueva as CasoEtapaPayload['etapa_nueva'],
+    sub_etapa_nueva: typeof p.sub_etapa_nueva === 'string' ? p.sub_etapa_nueva : undefined,
+    etapa_anterior: typeof p.etapa_anterior === 'string' ? p.etapa_anterior : undefined,
+    sub_etapa_anterior: typeof p.sub_etapa_anterior === 'string' ? p.sub_etapa_anterior : undefined,
     timestamp: typeof p.timestamp === 'string' ? p.timestamp : undefined,
   };
 }
@@ -338,6 +364,96 @@ export async function webhookCasoCierreHandler(
       success: true,
       causa_id: cierre.causa_id,
       message: 'Caso cerrado',
+    });
+  } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      logger.warn(
+        { error: error.message, action: 'webhook_auth_failed' },
+        'Webhook signature validation failed'
+      );
+      res.status(401).json({
+        success: false,
+        error: 'invalid_signature',
+        message: error.message,
+        timestamp: new Date().toISOString(),
+      });
+    } else if (error instanceof ValidationError) {
+      logger.warn(
+        { error: error.message, action: 'webhook_validation_failed' },
+        'Webhook payload validation failed'
+      );
+      res.status(400).json({
+        success: false,
+        error: 'validation_error',
+        message: error.message,
+        timestamp: new Date().toISOString(),
+      });
+    } else if (error instanceof NotFoundError) {
+      logger.warn(
+        { error: error.message, action: 'webhook_not_found' },
+        'Causa not found in DB'
+      );
+      res.status(404).json({
+        success: false,
+        error: 'not_found',
+        message: error.message,
+        timestamp: new Date().toISOString(),
+      });
+    } else {
+      logger.error({ error, action: 'webhook_internal_error' }, 'Webhook processing failed');
+      res.status(500).json({
+        success: false,
+        error: 'internal_error',
+        message: 'Error procesando webhook',
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+}
+
+/**
+ * POST /webhook/caso-etapa
+ * SaaS webhook: cambio de etapa o sub-etapa.
+ * Litigacion → Cobranza, o cambio a sub-etapa que requiere acción del agente.
+ */
+export async function webhookCasoEtapaHandler(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const payload = req.body;
+
+    validateWebhookSignature(req, payload);
+
+    const etapaCambio = validateEtapaPayload(payload);
+
+    const conversation = await getConversationByCausaId(etapaCambio.causa_id);
+    if (!conversation) {
+      throw new NotFoundError(`Causa ${etapaCambio.causa_id} no encontrada en DB`);
+    }
+
+    // Mapear etapa del SaaS a RDD
+    const etapaRdd = etapaCambio.etapa_nueva === 'Cobranza' ? 'cobranza' : 'litigacion';
+
+    await updateConversationMetadata(conversation.id, {
+      etapa: etapaRdd,
+      sub_etapa_saas: etapaCambio.sub_etapa_nueva ?? null,
+    });
+
+    logger.info(
+      {
+        causaId: etapaCambio.causa_id,
+        etapaNueva: etapaRdd,
+        subEtapaNueva: etapaCambio.sub_etapa_nueva,
+      },
+      'Webhook caso-etapa processed'
+    );
+
+    res.status(200).json({
+      success: true,
+      causa_id: etapaCambio.causa_id,
+      etapa: etapaRdd,
+      message: 'Etapa actualizada',
     });
   } catch (error) {
     if (error instanceof UnauthorizedError) {

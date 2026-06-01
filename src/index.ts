@@ -11,6 +11,7 @@ import {
   webhookCausaNuevaHandler,
   webhookCasoModificacionHandler,
   webhookCasoCierreHandler,
+  webhookCasoEtapaHandler,
 } from '@api/webhook';
 import { agentChatHandler, portfolioChatHandler } from '@api/agent';
 import { casesHandler } from '@api/cases';
@@ -55,6 +56,7 @@ function main() {
   app.post('/webhook/causa-nueva', webhookLimiter, webhookCausaNuevaHandler);
   app.post('/webhook/caso-modificacion', webhookLimiter, webhookCasoModificacionHandler);
   app.post('/webhook/caso-cierre', webhookLimiter, webhookCasoCierreHandler);
+  app.post('/webhook/caso-etapa', webhookLimiter, webhookCasoEtapaHandler);
   app.post('/agent/chat', requireApiKey, chatLimiter, agentChatHandler);
   app.post('/agent/portfolio-chat', requireApiKey, chatLimiter, portfolioChatHandler);
   app.get('/cases', requireApiKey, chatLimiter, casesHandler);

@@ -24,6 +24,15 @@ export interface CasoCierrePayload {
   timestamp?: string;
 }
 
+export interface CasoEtapaPayload {
+  causa_id: string;
+  etapa_nueva: 'Litigacion' | 'Cobranza' | 'Cierre';
+  sub_etapa_nueva?: string;
+  etapa_anterior?: string;
+  sub_etapa_anterior?: string;
+  timestamp?: string;
+}
+
 export interface RegistroRow {
   causaId: string;
   clienteNombre: string;
