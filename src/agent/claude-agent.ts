@@ -41,6 +41,8 @@ import {
   FinancialData,
   Intent,
 } from './message-parser';
+import { AGENT_TOOLS } from './tool-definitions';
+import { processToolUseBlocks } from './tool-handlers';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Error classes
@@ -263,6 +265,7 @@ export class ClaudeAgent {
         messages: claudeMessages,
         max_tokens: 2048,
         temperature: env.CLAUDE_TEMPERATURE,
+        tools: AGENT_TOOLS as any, // Type: Anthropic SDK Tool[]
       });
     } catch (err) {
       const apiErr = err as AnthropicAPIError;
@@ -281,16 +284,121 @@ export class ClaudeAgent {
       throw err;
     }
 
-    // Extract text from first content block
-    const contentBlock = claudeResponse.content[0];
-    const assistantContent =
-      contentBlock && contentBlock.type === 'text' ? contentBlock.text : '';
+    // ── 7.5 Handle tool use loop ────────────────────────────────────────────
+    let assistantContent = '';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const currentMessages: any[] = [...claudeMessages]; // Copy for loop iterations (typed broadly to support tool_use/tool_result content)
+    let toolUseOccurred = false;
+
+    let response = claudeResponse;
+    while (true) {
+      // Check for tool use blocks
+      const toolUseBlocks: Array<{
+        id: string;
+        name: string;
+        input: Record<string, any>;
+      }> = [];
+
+      for (const contentBlock of response.content) {
+        if (contentBlock.type === 'tool_use') {
+          toolUseBlocks.push({
+            id: contentBlock.id,
+            name: contentBlock.name,
+            input: contentBlock.input as Record<string, any>,
+          });
+        } else if (contentBlock.type === 'text') {
+          assistantContent = contentBlock.text;
+        }
+      }
+
+      // If no tool use, we're done
+      if (toolUseBlocks.length === 0) {
+        break;
+      }
+
+      toolUseOccurred = true;
+      logger.debug(
+        { conversationId: conversation.id, toolCount: toolUseBlocks.length },
+        'chat: tool use detected, processing'
+      );
+
+      // Execute tools
+      const toolResults = await processToolUseBlocks(
+        toolUseBlocks,
+        conversation.id
+      );
+
+      // Add assistant response + tool results to message history
+      currentMessages.push({
+        role: 'assistant',
+        content: response.content,
+      });
+
+      // Build tool result blocks
+      const toolResultBlocks = toolResults.map((result) => ({
+        type: 'tool_result' as const,
+        tool_use_id: result.tool_use_id,
+        content: result.content,
+      }));
+
+      currentMessages.push({
+        role: 'user',
+        content: toolResultBlocks,
+      });
+
+      // Call Claude again with tool results
+      try {
+        response = await this.client.messages.create({
+          model: env.CLAUDE_MODEL,
+          system: systemPrompt,
+          messages: currentMessages,
+          max_tokens: 2048,
+          temperature: env.CLAUDE_TEMPERATURE,
+          tools: AGENT_TOOLS as any,
+        });
+      } catch (err) {
+        const apiErr = err as AnthropicAPIError;
+        const status = apiErr.status;
+        logger.error(
+          { conversationId: conversation.id, status, error: apiErr.message },
+          'chat: Claude API error in tool loop'
+        );
+
+        if (status === 429 || (status !== undefined && status >= 500)) {
+          throw new TemporaryError(
+            `Claude API temporary error (status ${status}): ${apiErr.message}`
+          );
+        }
+        if (status === 401 || status === 403) {
+          throw new ClaudeAPIError(
+            `Claude API auth error (status ${status}): ${apiErr.message}`
+          );
+        }
+        throw err;
+      }
+    }
+
+    // Extract final text response
+    if (!assistantContent) {
+      for (const contentBlock of response.content) {
+        if (contentBlock.type === 'text') {
+          assistantContent = contentBlock.text;
+          break;
+        }
+      }
+    }
 
     // ── 8. Parse assistant response ──────────────────────────────────────────
-    const { intent: parsedIntent, data: financialData } = this.parseAssistantResponse(
-      assistantContent,
-      userIntent
-    );
+    // If tools were executed, skip old-style parsing
+    let parsedIntent: Intent = userIntent;
+    let financialData: FinancialData | undefined;
+
+    if (!toolUseOccurred) {
+      // Fallback to old parsing for backwards compatibility
+      const parsed = this.parseAssistantResponse(assistantContent, userIntent);
+      parsedIntent = parsed.intent;
+      financialData = parsed.data;
+    }
 
     const responseType = this.determineResponseType(assistantContent);
     const flags = this.extractFlags(assistantContent);
@@ -307,27 +415,10 @@ export class ClaudeAgent {
       }
     }
 
-    // ── 9.5 Execute Supabase actions (Fase 6.2) ───────────────────────────────
-    if (
-      financialData &&
-      Object.keys(financialData).length > 0 &&
-      (parsedIntent === 'acuerdo' || parsedIntent === 'pago')
-    ) {
-      try {
-        await executeSuperparserAction(conversation.id, parsedIntent, financialData);
-      } catch (err) {
-        logger.error(
-          { conversationId: conversation.id, intent: parsedIntent, error: err instanceof Error ? err.message : String(err) },
-          'ClaudeAgent.chat: Supabase action failed'
-        );
-        throw err;
-      }
-    }
-
     // ── 10. Save assistant message (atomic + audit) ───────────────────────────
     const tokensUsed = {
-      input: claudeResponse.usage.input_tokens,
-      output: claudeResponse.usage.output_tokens,
+      input: response.usage.input_tokens,
+      output: response.usage.output_tokens,
     };
 
     const assistantDbMessage = await createMessage(
@@ -338,7 +429,7 @@ export class ClaudeAgent {
         response_type: responseType,
         processing_ok: true,
         flags,
-        model: claudeResponse.model,
+        model: response.model,
         tokens_used: tokensUsed,
       }
     );
