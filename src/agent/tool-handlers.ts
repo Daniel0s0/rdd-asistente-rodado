@@ -124,14 +124,20 @@ export async function executeTool(
       }
 
       case 'close_case': {
-        const { razonCierre, notas } = input;
+        const { motivo_cierre, notas } = input;
 
-        // Update conversation to mark as closed
         await updateConversationMetadata(conversationId, {
-          case_state: 'pagado', // or however you mark closed
+          case_state: 'cerrada',
+          motivo_cierre,
         });
 
-        resultText = `✅ Causa cerrada por: ${razonCierre}${notas ? `. Notas: ${notas}` : ''}`;
+        const motivoTexto: Record<string, string> = {
+          pago_total: 'pago total recibido',
+          desistimiento: 'desistimiento del cliente',
+          caducada: 'causa caducada',
+        };
+
+        resultText = `✅ Causa cerrada por ${motivoTexto[motivo_cierre] ?? motivo_cierre}${notas ? `. Notas: ${notas}` : ''}`;
         break;
       }
 

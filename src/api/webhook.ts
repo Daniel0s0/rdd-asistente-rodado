@@ -391,7 +391,7 @@ export async function webhookCasoCierreHandler(
       // Cierre real: actualizar case_state y motivo_cierre
       await updateConversationMetadata(conversation.id, {
         case_state: 'cerrada',
-        motivo_cierre: motivo,
+        motivo_cierre: motivo as 'pago_total' | 'desistimiento' | 'caducada',
         sub_etapa_saas: cierre.sub_etapa,
       });
       await closeConversation(conversation.id, 'webhook_sistema');

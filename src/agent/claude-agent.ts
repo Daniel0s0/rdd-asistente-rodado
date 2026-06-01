@@ -983,7 +983,22 @@ Tienes acceso a estas herramientas para ejecutar acciones financieras directamen
 
 5. **close_case** — Cierra la causa
    - Úsalo cuando: usuario confirma que la causa está completamente resuelta
-   - Input: razonCierre (pagado_completo|acuerdo|desestimado|otro), notas (opcional)
+   - Input: motivo_cierre (pago_total|desistimiento|caducada), notas (opcional)
+
+ESTADOS DE LA CAUSA:
+- activa: causa en tramitación (litigacion o cobranza)
+- cerrada: causa terminada
+
+ETAPA:
+- litigacion: tramitación judicial
+- cobranza: cobro forzado post-sentencia
+
+CUANDO SE CIERRA UNA CAUSA (close_case tool):
+- pago_total: se cobró todo el monto demandado
+- desistimiento: el cliente retiró la demanda (desistimiento)
+- caducada: la causa caducó por falta de tramitación
+
+IMPORTANTE: Una causa con acuerdo de cuotas vigente sigue siendo "activa" hasta que se pague la última cuota.
 
 INSTRUCCIONES:
 - Cuando el usuario mencione dinero/pagos/acuerdos, INTERPRETA SU INTENCIÓN y usa la herramienta correspondiente

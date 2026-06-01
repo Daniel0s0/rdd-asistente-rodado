@@ -563,7 +563,7 @@ describe('Tool Handlers', () => {
         'close_case',
         toolUseId,
         {
-          razonCierre: 'pagado_completo',
+          motivo_cierre: 'pago_total',
           notas: 'Todas las cuotas pagadas correctamente',
         },
         conversationId
@@ -571,11 +571,11 @@ describe('Tool Handlers', () => {
 
       expect(result.isError).toBe(false);
       expect(result.content).toContain('✅');
-      expect(result.content).toContain('pagado_completo');
+      expect(result.content).toContain('pago total recibido');
       expect(result.content).toContain('Todas las cuotas pagadas correctamente');
       expect(models.updateConversationMetadata).toHaveBeenCalledWith(
         conversationId,
-        { case_state: 'pagado' }
+        { case_state: 'cerrada', motivo_cierre: 'pago_total' }
       );
     });
 
@@ -586,14 +586,14 @@ describe('Tool Handlers', () => {
         'close_case',
         toolUseId,
         {
-          razonCierre: 'resuelto_acuerdo',
+          motivo_cierre: 'desistimiento',
         },
         conversationId
       );
 
       expect(result.isError).toBe(false);
       expect(result.content).toContain('✅');
-      expect(result.content).toContain('resuelto_acuerdo');
+      expect(result.content).toContain('desistimiento del cliente');
       expect(result.content).not.toContain('Notas');
     });
 

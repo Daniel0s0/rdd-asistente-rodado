@@ -122,21 +122,21 @@ export const getCasoEstadoTool: ToolDefinition = {
 // 5. close_case — Cerrar la causa
 export const closeCapeTool: ToolDefinition = {
   name: 'close_case',
-  description: 'Cierra la causa marcándola como finalizada. Úsalo cuando el usuario confirma que la causa está completamente solucionada.',
+  description: 'Cierra la causa marcándola como finalizada. Úsalo solo cuando el usuario confirma que la causa terminó completamente.',
   input_schema: {
     type: 'object',
     properties: {
-      razonCierre: {
+      motivo_cierre: {
         type: 'string',
-        enum: ['pagado_completo', 'acuerdo', 'desestimado', 'otro'],
-        description: 'Razón por la que se cierra la causa.',
+        enum: ['pago_total', 'desistimiento', 'caducada'],
+        description: 'Razón del cierre: pago_total (se cobró todo), desistimiento (cliente retiró demanda), caducada (no se tramitó)',
       },
       notas: {
         type: 'string',
         description: 'Notas adicionales sobre el cierre (opcional).',
       },
     },
-    required: ['razonCierre'],
+    required: ['motivo_cierre'],
   },
 };
 
