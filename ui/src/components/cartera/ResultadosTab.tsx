@@ -45,6 +45,13 @@ export default function ResultadosTab({ data, loading }: ResultadosTabProps) {
       borderColor: 'border-red-300',
     },
     {
+      label: 'Pagadas',
+      value: data.pagadas,
+      percentage: getPercentage(data.pagadas, data.total),
+      color: 'bg-yellow-100 text-yellow-800',
+      borderColor: 'border-yellow-300',
+    },
+    {
       label: 'Activas',
       value: data.activas,
       percentage: getPercentage(data.activas, data.total),
@@ -60,7 +67,7 @@ export default function ResultadosTab({ data, loading }: ResultadosTabProps) {
         <p className="text-4xl font-bold text-gray-900">{data.total}</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
         {resultados.map((item) => (
           <div
             key={item.label}

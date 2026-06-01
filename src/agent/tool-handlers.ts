@@ -9,29 +9,7 @@ import {
   getAcuerdosActivos,
   updateConversationMetadata,
 } from '@database/models';
-
-/**
- * Helper function to calculate cuota payment dates.
- * Generates monthly dates starting from fechaPrimerPago.
- */
-function calculateCuotaDates(
-  fechaPrimerPago: string,
-  cuotasTotal: number
-): string[] {
-  const dates: string[] = [];
-  const firstDate = new Date(fechaPrimerPago);
-
-  for (let i = 0; i < cuotasTotal; i++) {
-    const date = new Date(firstDate);
-    date.setMonth(date.getMonth() + i);
-    const yyyy = date.getFullYear();
-    const mm = String(date.getMonth() + 1).padStart(2, '0');
-    const dd = String(date.getDate()).padStart(2, '0');
-    dates.push(`${yyyy}-${mm}-${dd}`);
-  }
-
-  return dates;
-}
+import { calculateCuotaDates } from './claude-agent';
 
 /**
  * Result of a tool call.

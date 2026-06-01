@@ -79,6 +79,38 @@ interface AnthropicAPIError extends Error {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Helper: calculateCuotaDates
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Calculate monthly cuota payment dates.
+ * Generates an array of ISO date strings (YYYY-MM-DD) starting from fechaPrimerPago,
+ * advancing by one month for each cuota.
+ *
+ * @param fechaPrimerPago - First payment date (ISO string or Date-compatible)
+ * @param cuotasTotal     - Total number of cuotas to generate dates for
+ * @returns Array of date strings in YYYY-MM-DD format
+ */
+export function calculateCuotaDates(
+  fechaPrimerPago: string,
+  cuotasTotal: number
+): string[] {
+  const dates: string[] = [];
+  const firstDate = new Date(fechaPrimerPago);
+
+  for (let i = 0; i < cuotasTotal; i++) {
+    const date = new Date(firstDate);
+    date.setMonth(date.getMonth() + i);
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    dates.push(`${yyyy}-${mm}-${dd}`);
+  }
+
+  return dates;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ClaudeAgent
 // ─────────────────────────────────────────────────────────────────────────────
 

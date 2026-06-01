@@ -16,8 +16,8 @@ export default function KPICards({ data, loading }: KPICardsProps) {
 
   if (loading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-        {[1, 2, 3, 4, 5].map((i) => (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
+        {[1, 2, 3, 4, 5, 6].map((i) => (
           <div key={i} className="bg-gray-200 animate-pulse rounded-lg h-24" />
         ))}
       </div>
@@ -25,7 +25,7 @@ export default function KPICards({ data, loading }: KPICardsProps) {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
       {/* Cobrado este año */}
       <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
         <p className="text-gray-600 text-sm font-medium">Cobrado este año</p>
@@ -68,6 +68,12 @@ export default function KPICards({ data, loading }: KPICardsProps) {
       <div className="bg-white rounded-lg shadow p-4 border-l-4 border-orange-500">
         <p className="text-gray-600 text-sm font-medium">% Resultados</p>
         <p className="text-2xl font-bold text-orange-600 mt-1">{data.porcentajeResultados}%</p>
+      </div>
+
+      {/* Causas pagadas */}
+      <div className="bg-white rounded-lg shadow p-4 border-l-4 border-yellow-500">
+        <p className="text-gray-600 text-sm font-medium">Causas pagadas</p>
+        <p className="text-2xl font-bold text-yellow-600 mt-1">{data.causasPagadas}</p>
       </div>
     </div>
   );

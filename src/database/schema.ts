@@ -163,7 +163,7 @@ export interface Conversation {
   monto_demanda?: number;
 
   /** System: canonical case state */
-  case_state: 'activo' | 'acuerdo' | 'archivado' | 'desistido' | 'caducado';
+  case_state: 'activo' | 'acuerdo' | 'archivado' | 'desistido' | 'caducado' | 'pagado';
 
   /** System: total honorarios generated */
   ingreso_honorarios: number;
