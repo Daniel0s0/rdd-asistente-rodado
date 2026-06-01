@@ -223,4 +223,179 @@ describe('webhookCasoCierreHandler', () => {
       })
     );
   });
+
+  it('closes conversation with Caducada sub_etapa', async () => {
+    const { closeConversation } = await import('@database/models');
+    vi.mocked(closeConversation).mockClear();
+
+    const body = { causa_id: 'test-123', sub_etapa: 'Caducada' };
+    const signature = generateSignature(body);
+    const req = createRequest(body, signature) as any;
+    const res = createResponse() as any;
+
+    await webhookCasoCierreHandler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        causa_id: 'test-123',
+        rdd_action: 'closed',
+        motivo_cierre: 'caducada',
+      })
+    );
+
+    expect(closeConversation).toHaveBeenCalledWith(
+      'mock-conversation-uuid',
+      'webhook_sistema'
+    );
+  });
+
+  it('Acuerdo maintains case active and does not close', async () => {
+    const { updateConversationMetadata, closeConversation } = await import('@database/models');
+    vi.mocked(updateConversationMetadata).mockClear();
+    vi.mocked(closeConversation).mockClear();
+
+    const body = { causa_id: 'test-123', sub_etapa: 'Acuerdo' };
+    const signature = generateSignature(body);
+    const req = createRequest(body, signature) as any;
+    const res = createResponse() as any;
+
+    await webhookCasoCierreHandler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        causa_id: 'test-123',
+        rdd_action: 'kept_active',
+      })
+    );
+
+    // Verify metadata was updated
+    expect(updateConversationMetadata).toHaveBeenCalledWith(
+      'mock-conversation-uuid',
+      expect.objectContaining({ sub_etapa_saas: 'Acuerdo' })
+    );
+
+    // Verify close was NOT called
+    expect(closeConversation).not.toHaveBeenCalled();
+  });
+
+  it('updates metadata correctly for Pago sub_etapa', async () => {
+    const { updateConversationMetadata, closeConversation } = await import('@database/models');
+    vi.mocked(updateConversationMetadata).mockClear();
+    vi.mocked(closeConversation).mockClear();
+
+    const body = {
+      causa_id: 'test-123',
+      sub_etapa: 'Pago',
+      fecha_cierre: '2026-05-29',
+    };
+    const signature = generateSignature(body);
+    const req = createRequest(body, signature) as any;
+    const res = createResponse() as any;
+
+    await webhookCasoCierreHandler(req, res);
+
+    expect(updateConversationMetadata).toHaveBeenCalledWith(
+      'mock-conversation-uuid',
+      {
+        case_state: 'cerrada',
+        motivo_cierre: 'pago_total',
+        sub_etapa_saas: 'Pago',
+      }
+    );
+
+    expect(closeConversation).toHaveBeenCalledWith(
+      'mock-conversation-uuid',
+      'webhook_sistema'
+    );
+  });
+
+  it('updates metadata correctly for Desistimiento sub_etapa', async () => {
+    const { updateConversationMetadata } = await import('@database/models');
+    vi.mocked(updateConversationMetadata).mockClear();
+
+    const body = {
+      causa_id: 'test-123',
+      sub_etapa: 'Desistimiento',
+    };
+    const signature = generateSignature(body);
+    const req = createRequest(body, signature) as any;
+    const res = createResponse() as any;
+
+    await webhookCasoCierreHandler(req, res);
+
+    expect(updateConversationMetadata).toHaveBeenCalledWith(
+      'mock-conversation-uuid',
+      {
+        case_state: 'cerrada',
+        motivo_cierre: 'desistimiento',
+        sub_etapa_saas: 'Desistimiento',
+      }
+    );
+  });
+
+  it('requires causa_id to be present and non-empty', async () => {
+    const body = { sub_etapa: 'Pago' };
+    const signature = generateSignature(body);
+    const req = createRequest(body, signature) as any;
+    const res = createResponse() as any;
+
+    await webhookCasoCierreHandler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: false,
+        error: 'validation_error',
+        message: expect.stringContaining('causa_id'),
+      })
+    );
+  });
+
+  it('requires sub_etapa to be present', async () => {
+    const body = { causa_id: 'test-123' };
+    const signature = generateSignature(body);
+    const req = createRequest(body, signature) as any;
+    const res = createResponse() as any;
+
+    await webhookCasoCierreHandler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: false,
+        error: 'validation_error',
+        message: expect.stringContaining('sub_etapa'),
+      })
+    );
+  });
+
+  it('handles edge case: Acuerdo with optional fecha_cierre', async () => {
+    const { updateConversationMetadata, closeConversation } = await import('@database/models');
+    vi.mocked(updateConversationMetadata).mockClear();
+    vi.mocked(closeConversation).mockClear();
+
+    const body = {
+      causa_id: 'test-123',
+      sub_etapa: 'Acuerdo',
+      fecha_cierre: '2026-05-29',
+    };
+    const signature = generateSignature(body);
+    const req = createRequest(body, signature) as any;
+    const res = createResponse() as any;
+
+    await webhookCasoCierreHandler(req, res);
+
+    // Should still keep active despite fecha_cierre
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rdd_action: 'kept_active',
+      })
+    );
+    expect(closeConversation).not.toHaveBeenCalled();
+  });
 });
