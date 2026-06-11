@@ -1,8 +1,10 @@
 # RDD Implementation Roadmap
 
-**Status:** Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ + Phase 4 ✅ + Phase 4.5 ✅ + Phase 5 ✅ + Phase 5.1 ✅ + Phase 5.2 ✅ + Phase 5.3 ✅ + Phase 5.4 ✅ + Phase 6.1 ✅ + Phase 6.2 ✅ + Phase 6.3 ✅ + Phase 6.4 ✅ + Phase 6.5 ✅ | Production Ready (through 6.5)
+**Status:** Phases 1–6.5 ✅ + Phase 7 ✅ + Phase 8.1 ✅ + Phase 8.2 ✅ + Phase 9.1 ✅ + Phase 9.2 ✅ + Phase 9.3 ✅ | Feature-complete — Next: Production Readiness Roadmap (Etapas 1–5)
 
-Last updated: 2026-05-31 (11:45 PM GMT-4)
+Last updated: 2026-06-11
+
+**Roadmap activo:** [docs/superpowers/plans/2026-06-11-production-readiness.md](docs/superpowers/plans/2026-06-11-production-readiness.md)
 
 ---
 
@@ -25,6 +27,13 @@ Last updated: 2026-05-31 (11:45 PM GMT-4)
 | 6.3 | Analytics API | ✅ Complete | /analytics/* endpoints for portfolio KPIs, income, agreements, results |
 | 6.4 | Portfolio UI | ✅ Complete | React components for cartera dashboard with charts and tables |
 | 6.5 | Portfolio Chat | ✅ Complete | REST endpoint /agent/portfolio-chat, PortfolioChatWindow UI, multi-turn history |
+| 7 | Manual Financial Entry | ✅ Complete | POST /financials/registro + Case Detail View (GET /analytics/case/:causaId) |
+| 8.1 | Agent Tool Use | ✅ Complete | 5 tools (create_acuerdo, create_registro, mark_cuota_pagada, get_caso_estado, close_case), tool-use loop en chat() y chatStream() |
+| 8.2 | Intent from Tool Use | ✅ Complete | Intent y shouldSyncSheets derivados de resultados de Tool Use (no hardcoded) |
+| 9.1 | Schema Redesign + Webhook State Contract | ✅ Complete | case_state binario (activa\|cerrada) + motivo_cierre, handlers caso-etapa y caso-cierre con sub_etapa enum |
+| 9.2 | Proactive Acuerdo Detection | ✅ Complete | pending_action flag + inyección de ACCIÓN PENDIENTE en system prompt |
+| 9.3 | pending_action en caso-etapa | ✅ Complete | Extiende pending_action a webhookCasoEtapaHandler para sub_etapa Acuerdo |
+| E1–E5 | Production Readiness | 📋 Planned | Ver [roadmap de producción](docs/superpowers/plans/2026-06-11-production-readiness.md): robustez crítica, CI/CD, deuda técnica, outbox Sheets, deploy VPS |
 
 ---
 
@@ -610,6 +619,99 @@ Last updated: 2026-05-31 (11:45 PM GMT-4)
 - ✅ API: /agent/portfolio-chat endpoint with validation
 - ✅ Tests: 112/112 passing, build zero errors
 - ✅ Manual testing: Endpoint callable with valid analytics context in system prompt
+
+---
+
+## Phase 7: Manual Financial Entry + Case Detail View ✅
+
+**What was built:**
+- `POST /financials/registro` — entrada manual de registros financieros (validación Zod: UUID, enum tipo, monto positivo)
+- `GET /analytics/case/:causaId` — vista de detalle de caso con acuerdos/cuotas/registros
+
+**Commits:**
+- 17b174d: feat: Phase 7 — Manual Financial Entry + Case Detail View
+
+---
+
+## Phase 8.1: Agent Tool Use ✅
+
+**What was built:**
+- `src/agent/tool-definitions.ts` — 5 tool schemas: create_acuerdo, create_registro, mark_cuota_pagada, get_caso_estado, close_case
+- `src/agent/tool-handlers.ts` — processToolUseBlocks() con persistencia en Supabase
+- Tool-use loop agentic en `chat()` y `chatStream()` (claude-agent.ts)
+- System prompt declara tools explícitamente (resuelve B6: Agent Confidence Gap)
+
+**Key decisions:**
+- Tools como enhancement, no reemplazo de parseUserIntent (rollback trivial) — ver PROGRESS.md
+- L26/L27: capacidades del agente deben ser explícitas (tools + system prompt)
+
+**Tests status:** ✅ tool-handlers.test.ts (816 LOC) + tool-use.integration.test.ts (569 LOC)
+
+**Commits:** 32192da, d6b3c71, 701dcd4, 4195de8, 4d88d98, b8fe8f2, e2a65d6, c506629
+
+---
+
+## Phase 8.2: Intent Derived from Tool Use ✅
+
+**What was built:**
+- Intent y `shouldSyncSheets` derivados de qué tools ejecutó Claude (create_acuerdo → 'acuerdo', mark_cuota_pagada → 'pago', close_case → 'cierre'), con fallback a parseUserIntent() para casos sin tools
+- Aplicado en `chat()` y `chatStream()`
+
+**Commits:**
+- 286a6f8: feat: Phase 8.2 — derive intent and shouldSyncSheets from Tool Use results
+
+---
+
+## Phase 9.1: Schema Redesign + Webhook State Contract ✅
+
+**What was built:**
+- Modelo de estado binario: `case_state` (activa|cerrada) + `motivo_cierre` (pago_total|desistimiento|caducada)
+- `POST /webhook/caso-etapa` — nuevo handler: mapea etapa SaaS (Litigacion|Cobranza) a dominio RDD
+- `POST /webhook/caso-cierre` actualizado: sub_etapa enum (Acuerdo|Pago|Desistimiento|Caducada) con lógica asimétrica — Acuerdo NO cierra el caso
+- close_case tool alineado al nuevo modelo
+
+**Tests status:** ✅ 164/164 passing (webhook-etapa.test.ts, webhook-cierre.test.ts ampliados)
+
+**Commits:** fce2e1d, 127bf9b y relacionados
+
+---
+
+## Phase 9.2: Proactive Acuerdo Detection ✅
+
+**What was built:**
+- Campo `pending_action` en schema de conversations
+- webhook caso-cierre setea `pending_action='ask_acuerdo_terms'` en eventos Acuerdo
+- System prompt inyecta sección ACCIÓN PENDIENTE para que el agente pregunte términos del acuerdo proactivamente
+
+**Commits:**
+- c53eebb: feat: Phase 9.2 — Proactive Agent Detection of Cierre/Acuerdo
+
+---
+
+## Phase 9.3: pending_action en caso-etapa ✅
+
+**What was built:**
+- `webhookCasoEtapaHandler` también setea `pending_action` cuando sub_etapa_nueva='Acuerdo' (consistencia entre ambos entry points)
+
+**Tests status:** ✅ 187 tests passing (2 skipped), build 0 errors, lint 0 errors
+
+**Commits:**
+- 290ab79: feat: Phase 9.3 — extend pending_action to webhookCasoEtapaHandler
+
+---
+
+## Etapas 1–5: Production Readiness Roadmap 📋
+
+**Plan completo:** [docs/superpowers/plans/2026-06-11-production-readiness.md](docs/superpowers/plans/2026-06-11-production-readiness.md)
+
+| Etapa | Contenido | Estado |
+|-------|-----------|--------|
+| 0 | Baseline: push, docs sincronizados | 🚧 En curso (2026-06-11) |
+| 1 | Robustez crítica: error handlers globales, /health/ready, idempotencia webhooks, PM2 | 📋 |
+| 2 | Pipeline de deploy: CI GitHub Actions, migraciones versionadas, DEPLOYMENT.md | 📋 |
+| 3 | Calidad: 0 lint warnings, TDs (TD1/TD3), request ID logging | 📋 |
+| 4 | Confiabilidad flujo de ingresos: outbox Sheets, auditoría E2E financiera, Fase 10 Session Digest | 📋 |
+| 5 | Salida a producción: VPS, Nginx/HTTPS, webhooks reales JPourney, smoke tests | 📋 |
 
 ---
 

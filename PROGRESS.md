@@ -1481,3 +1481,44 @@ The agent's current architecture uses **implicit intent parsing + automatic acti
 ```
 
 ---
+
+## 2026-06-11 — Etapa 0: Baseline + Production Readiness Roadmap
+
+### Context
+
+Auditoría completa del proyecto (2 Explore Agents): el código está feature-complete en Fase 9.3
+(187 tests passing, build limpio, lint 0 errors / 71 warnings), pero la documentación estaba
+severamente desactualizada (CLAUDE.md decía Fase 2, TASKS.md llegaba a 6.5) y había 24 commits
+sin pushear a origin/main.
+
+### Decisions Made
+
+**D41: Congelar features y priorizar Production Readiness (Etapas 1–5)**
+- Chose: No avanzar con Fase 10 (Session Digest) ni nuevas features hasta cerrar brechas operacionales
+- Reason: Auditoría identificó 5 bloqueantes de producción: (1) sin global error handler para
+  unhandledRejection, (2) /health no valida dependencias (Supabase/Sheets/Drive), (3) webhooks
+  no idempotentes (duplicados crean filas/carpetas duplicadas), (4) PM2 config incompleto,
+  (5) sin CI/CD ni migraciones de DB versionadas
+- Plan: [docs/superpowers/plans/2026-06-11-production-readiness.md](docs/superpowers/plans/2026-06-11-production-readiness.md)
+- Trade-off: Session Digest se pospone a Etapa 4.3
+- Impact: Las Etapas 1–5 se ejecutan como workflows ultracode independientes
+
+**D42: PM2 se mantiene en fork mode con 1 instancia**
+- Chose: NO migrar a cluster mode pese a recomendación genérica de auditoría
+- Reason: Sistema single-user con Socket.io; cluster mode requiere sticky sessions y no aporta
+  valor con un solo usuario. Mejoras reales: kill_timeout, wait_ready, graceful shutdown (Etapa 1.4)
+
+### Learnings
+
+**L28: La documentación del harness se desincroniza si las fases no la actualizan**
+- Fases 7–9.3 se implementaron sin actualizar TASKS.md/CLAUDE.md (regla del framework no se siguió)
+- Corregido hoy: TASKS.md ahora documenta Fases 7, 8.1, 8.2, 9.1, 9.2, 9.3 + roadmap Etapas 1–5
+- Regla reforzada: cada fase completada DEBE actualizar TASKS.md antes del commit final
+
+**L29: Riesgo principal para la finalidad del sistema — pérdida de registros si Sheets falla**
+- Si appendRegistroRow() falla después de crear la conversación, la fila REGISTRO se pierde sin
+  reintento persistente → se resolverá con patrón outbox en Etapa 4.1
+
+### Blockers
+
+(Ninguno — baseline verde: 187 tests, build OK, lint 0 errors)
