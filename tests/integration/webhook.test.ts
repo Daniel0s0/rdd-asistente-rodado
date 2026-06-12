@@ -16,6 +16,8 @@ vi.mock('@database/models', () => ({
     closed_at: null,
     metadata: {},
   }),
+  // Causa no existe → camino feliz (el check de idempotencia la deja pasar)
+  getConversationByCausaId: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock('@drive/client', () => ({

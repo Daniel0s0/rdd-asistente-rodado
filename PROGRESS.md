@@ -1522,3 +1522,29 @@ sin pushear a origin/main.
 ### Blockers
 
 (Ninguno — baseline verde: 187 tests, build OK, lint 0 errors)
+
+## 2026-06-11 (noche) — Etapa 1: Robustez Crítica ✅
+
+### What was built
+
+- **1.1 Global error handling + graceful shutdown** (src/index.ts): handlers para
+  unhandledRejection/uncaughtException (log + exit(1) → PM2 reinicia); shutdown ordenado en
+  SIGTERM/SIGINT (cierra Socket.io, drena HTTP, timeout forzado 10s); process.send('ready')
+  para PM2 wait_ready.
+- **1.2 Readiness check** (src/api/health.ts): GET /health/ready valida Supabase (select real)
+  + config Google → 200 ok / 503 degraded con detalle por servicio. /health queda como liveness.
+- **1.3 Idempotencia de webhooks** (src/api/webhook.ts): causa-nueva duplicada responde
+  200 {duplicate:true} SIN re-crear carpeta Drive, fila Sheets ni conversación.
+- **1.4 PM2 production-grade** (deployment/pm2.config.js): wait_ready, listen_timeout 10s,
+  kill_timeout 15s, log_date_format. Se mantiene fork/1 instancia (D42).
+
+### Learnings
+
+**L30: `npm run test` colgaba la automatización por watch mode**
+- El script era `"test": "vitest"` → en terminal interactivo entra en watch mode y nunca termina
+  (un run en background quedó 38 min sin output). Corregido a `"test": "vitest run"`.
+  La suite completa corre en ~4s.
+
+### Tests
+
+191 passing + 2 skipped (4 nuevos: 3 readiness + 1 idempotencia). Build 0 errors, lint 0 errors.

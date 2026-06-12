@@ -6,7 +6,7 @@ import helmet from 'helmet';
 import { Server as SocketIOServer } from 'socket.io';
 import { getEnv } from '@config/env';
 import { logger } from '@utils/logger';
-import { healthHandler } from '@api/health';
+import { healthHandler, readyHandler } from '@api/health';
 import {
   webhookCausaNuevaHandler,
   webhookCasoModificacionHandler,
@@ -27,6 +27,18 @@ import { registerSocketHandlers } from '@api/socket-handler';
 import { requireApiKey } from '@middleware/auth';
 import { webhookLimiter, chatLimiter } from '@middleware/rate-limit';
 import type { ClientToServerEvents, ServerToClientEvents } from '@domain/agent';
+
+// Etapa 1.1: errores no capturados nunca deben matar el proceso en silencio.
+// Se loguean y se sale con código 1 para que PM2 reinicie.
+process.on('unhandledRejection', (reason) => {
+  logger.error({ reason }, 'Unhandled promise rejection — exiting');
+  process.exit(1);
+});
+
+process.on('uncaughtException', (error) => {
+  logger.error({ error: error.message, stack: error.stack }, 'Uncaught exception — exiting');
+  process.exit(1);
+});
 
 function main() {
   const env = getEnv();
@@ -53,6 +65,7 @@ function main() {
   });
 
   app.get('/health', healthHandler);
+  app.get('/health/ready', readyHandler);
   app.post('/webhook/causa-nueva', webhookLimiter, webhookCausaNuevaHandler);
   app.post('/webhook/caso-modificacion', webhookLimiter, webhookCasoModificacionHandler);
   app.post('/webhook/caso-cierre', webhookLimiter, webhookCasoCierreHandler);
@@ -92,7 +105,28 @@ function main() {
       { port: env.PORT, environment: env.NODE_ENV },
       'RDD server started'
     );
+    // PM2 wait_ready: avisa que el server está listo para recibir tráfico
+    if (process.send) {
+      process.send('ready');
+    }
   });
+
+  // Etapa 1.1: graceful shutdown — cierra Socket.io y drena conexiones HTTP
+  const shutdown = (signal: string) => {
+    logger.info({ signal }, 'Shutdown signal received — closing server');
+    io.close();
+    httpServer.close(() => {
+      logger.info('Server closed — exiting');
+      process.exit(0);
+    });
+    // Si las conexiones no drenan en 10s, salida forzada
+    setTimeout(() => {
+      logger.warn('Forced shutdown after timeout');
+      process.exit(1);
+    }, 10_000).unref();
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 main();

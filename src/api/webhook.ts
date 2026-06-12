@@ -173,6 +173,24 @@ export async function webhookCausaNuevaHandler(
 
     const causa = validateCausaPayload(payload);
 
+    // Idempotencia: un webhook duplicado no debe re-crear carpeta Drive,
+    // fila en Sheets ni conversación (Etapa 1.3)
+    const existing = await getConversationByCausaId(causa.causa_id);
+    if (existing) {
+      logger.info(
+        { causaId: causa.causa_id, conversationId: existing.id, action: 'webhook_duplicate' },
+        'Webhook duplicado: causa ya registrada, no se duplican recursos'
+      );
+      res.status(200).json({
+        success: true,
+        duplicate: true,
+        causa_id: causa.causa_id,
+        conversation_id: existing.id,
+        message: 'Causa ya registrada previamente',
+      });
+      return;
+    }
+
     // 1. Crear carpetas en Drive (Phase 4)
     logger.debug({ causaId: causa.causa_id }, 'Creating Drive case folder structure');
     const driveFolder = await createCaseFolder(causa.causa_id);

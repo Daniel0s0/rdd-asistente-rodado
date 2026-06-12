@@ -32,13 +32,9 @@ vi.mock('@database/models', () => ({
     closed_at: null,
     metadata: {},
   }),
-  getConversationByCausaId: vi.fn().mockResolvedValue({
-    id: 'mock-conversation-uuid-unit-test',
-    causa_id: 'test-causa-id',
-    created_at: new Date(),
-    closed_at: null,
-    metadata: {},
-  }),
+  // Por defecto la causa NO existe (camino feliz de causa-nueva);
+  // el test de idempotencia la sobreescribe con mockResolvedValueOnce
+  getConversationByCausaId: vi.fn().mockResolvedValue(null),
   updateConversationMetadata: vi.fn().mockResolvedValue({
     id: 'mock-conversation-uuid-unit-test',
   }),
@@ -196,6 +192,43 @@ describe('webhookCausaNuevaHandler', () => {
         drive_folder_id: 'mock-drive-folder-id',
       })
     );
+  });
+
+  it('returns 200 duplicate without re-creating resources when causa already exists', async () => {
+    const { getConversationByCausaId, createConversation } = await import('@database/models');
+    const { createCaseFolder } = await import('@drive/client');
+    const { appendRegistroRow } = await import('@sheets/client');
+
+    vi.mocked(createCaseFolder).mockClear();
+    vi.mocked(appendRegistroRow).mockClear();
+    vi.mocked(createConversation).mockClear();
+    vi.mocked(getConversationByCausaId).mockResolvedValueOnce({
+      id: 'existing-conversation-id',
+      causa_id: 'test-dup',
+      created_at: new Date(),
+      closed_at: null,
+      metadata: {},
+    } as any);
+
+    const body = { causa_id: 'test-dup', cliente_nombre: 'Test Client' };
+    const signature = generateSignature(body);
+    const req = createRequest(body, signature) as any;
+    const res = createResponse() as any;
+
+    await webhookCausaNuevaHandler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        duplicate: true,
+        causa_id: 'test-dup',
+        conversation_id: 'existing-conversation-id',
+      })
+    );
+    expect(createCaseFolder).not.toHaveBeenCalled();
+    expect(appendRegistroRow).not.toHaveBeenCalled();
+    expect(createConversation).not.toHaveBeenCalled();
   });
 
   it.skip('accepts valid payload with correct signature', async () => {
