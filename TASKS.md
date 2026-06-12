@@ -708,10 +708,14 @@ Last updated: 2026-06-11
 |-------|-----------|--------|
 | 0 | Baseline: push, docs sincronizados | ✅ (2026-06-11, commit c537382) |
 | 1 | Robustez crítica: error handlers globales, /health/ready, idempotencia webhooks, PM2 | ✅ (2026-06-11) |
-| 2 | Pipeline de deploy: CI GitHub Actions, migraciones versionadas, DEPLOYMENT.md | 🚧 CI ✅ + DEPLOYMENT.md ✅ + deploy.sh ✅ — falta 2.2 migraciones versionadas |
-| 3 | Calidad: 0 lint warnings, TDs (TD1/TD3), request ID logging | 🚧 TDs ✅, lint 71→21 warnings (quedan models.ts ~15 + menores) — falta terminar lint + request ID |
+| 2 | Pipeline de deploy: CI GitHub Actions, migraciones versionadas, DEPLOYMENT.md | ✅ (2026-06-12) CI + DEPLOYMENT.md + deploy.sh + db/migrations con baseline |
+| 3 | Calidad: 0 lint warnings, TDs, request ID logging | ✅ (2026-06-12) lint 0 warnings con gate en CI, TDs cerrados, request ID en logs |
 | 4 | Confiabilidad flujo de ingresos: outbox Sheets, auditoría E2E financiera, Fase 10 Session Digest | 📋 |
 | 5 | Salida a producción: VPS, Nginx/HTTPS, webhooks reales JPourney, smoke tests | 📋 |
+
+**⚠️ BLOCKER B7 (ver PROGRESS.md):** el proyecto Supabase configurado ya no existe (NXDOMAIN).
+Antes de la Etapa 5 hay que crear un proyecto nuevo, aplicar `db/migrations/0001_baseline.sql`
+y actualizar `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`.
 
 ---
 
