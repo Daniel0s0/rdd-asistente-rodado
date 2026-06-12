@@ -338,7 +338,7 @@ describe('Database CRUD Operations', () => {
 
       expect(mockSupabaseClient.from).toHaveBeenCalledWith('conversations');
       expect(result.causa_id).toBe('__portfolio__');
-      expect(result.case_state).toBe('activo');
+      expect(result.case_state).toBe('activa');
       // Verify that case-specific fields are undefined/null
       expect(result.cliente_nombre).toBeUndefined();
       expect(result.demandado).toBeUndefined();
@@ -351,7 +351,7 @@ describe('Database CRUD Operations', () => {
       // Check that the minimal structure is correct
       expect(result).toHaveProperty('id');
       expect(result).toHaveProperty('causa_id', '__portfolio__');
-      expect(result).toHaveProperty('case_state', 'activo');
+      expect(result).toHaveProperty('case_state', 'activa');
       expect(result).toHaveProperty('message_count', 0);
 
       // Verify no case-specific fields
@@ -484,7 +484,7 @@ describe('Database CRUD Operations', () => {
         rit: '24-00005-1',
       });
 
-      const result = await models.listConversations({ case_state: 'activo', limit: 10, offset: 0 });
+      const result = await models.listConversations({ case_state: 'activa', limit: 10, offset: 0 });
 
       expect(mockSupabaseClient.from).toHaveBeenCalledWith('conversations');
       expect(Array.isArray(result)).toBe(true);

@@ -134,12 +134,12 @@ export async function getCartKPI(): Promise<CartKPI> {
   }
 
   const convData = (conversations || []) as ConversationStateRow[];
-  const causasActivas = convData.filter((c) => c.case_state === 'activo').length;
+  const causasActivas = convData.filter((c) => c.case_state === 'activa').length;
   const causasDesistidas = convData.filter((c) => c.case_state === 'desistido').length;
   const causasCaducadas = convData.filter((c) => c.case_state === 'caducado').length;
   const causasPagadas = convData.filter((c) => c.case_state === 'pagado').length;
 
-  const convWithResult = convData.filter((c) => c.case_state !== 'activo').length;
+  const convWithResult = convData.filter((c) => c.case_state !== 'activa').length;
   const porcentajeResultados = convData.length > 0
     ? Math.round((convWithResult / convData.length) * 100)
     : 0;
@@ -343,8 +343,8 @@ export async function getCaseResults(): Promise<CaseResults> {
 
   const data = (conversations || []) as ConversationStateRow[];
   const total = data.length;
-  const conResultado = data.filter((c) => c.case_state !== 'activo').length;
-  const sinResultado = data.filter((c) => c.case_state === 'activo').length;
+  const conResultado = data.filter((c) => c.case_state !== 'activa').length;
+  const sinResultado = data.filter((c) => c.case_state === 'activa').length;
   const desistidas = data.filter((c) => c.case_state === 'desistido').length;
   const caducadas = data.filter((c) => c.case_state === 'caducado').length;
   const pagadas = data.filter((c) => c.case_state === 'pagado').length;

@@ -95,12 +95,10 @@ export default function Dashboard({ onSelectCausa }: DashboardProps) {
 
   const uniqueTribunals = Array.from(new Set(cases.map((c) => c.tribunal).filter(Boolean))) as string[];
 
+  // Contrato Fase 9.1: case_state es activa|cerrada (el motivo va en motivo_cierre)
   const CASE_STATES = [
-    { value: 'activo', label: 'Activo' },
-    { value: 'acuerdo', label: 'Acuerdo' },
-    { value: 'archivado', label: 'Archivado' },
-    { value: 'desistido', label: 'Desistido' },
-    { value: 'caducado', label: 'Caducado' },
+    { value: 'activa', label: 'Activa' },
+    { value: 'cerrada', label: 'Cerrada' },
   ];
 
   const getCaseStateStyle = (state: string | undefined) => {

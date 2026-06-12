@@ -186,7 +186,7 @@ describe('ClaudeAgent.chat()', () => {
       rit: '123-2024',
       etapa: 'litigacion',
       monto_demanda: 5000000,
-      case_state: 'activo',
+      case_state: 'activa',
       ingreso_honorarios: 0,
       pagos_pendientes: 0,
       acuerdo_monto: undefined,

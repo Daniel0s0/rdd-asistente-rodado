@@ -1570,3 +1570,38 @@ sin pushear a origin/main.
 - **TD3 (duplicate key por string matching): RESUELTO** — commit eb9051b, error.code === '23505'
   con fallback al mensaje.
 
+
+## 2026-06-12 — Etapas 2.2 y 3 completas + 2 bugs de datos corregidos
+
+### What was built
+
+- **Etapa 2.2 ✅:** db/migrations/ (0001_baseline.sql con las 7 tablas + README + npm run db:status).
+- **Etapa 3 ✅:** lint 0 warnings en src/ (eran 71) con gate --max-warnings 0 en CI;
+  request ID en todos los logs vía AsyncLocalStorage + mixin de Pino (middleware request-id,
+  respeta x-request-id entrante); TDs cerrados.
+
+### Bugs encontrados y corregidos (auditoría del flujo financiero)
+
+**L31: get_caso_estado fallaba con acuerdos activos (camelCase vs snake_case)**
+- El template leía montoTotal/cuotasPagadas/proximoVencimiento — campos inexistentes en
+  AcuerdoRecord. TypeError en runtime; el test codificaba el bug con fixtures camelCase.
+- Fix (ac616cb): helper getCuotasByAcuerdo() + cálculo real de pagadas/próximo vencimiento.
+- Lección: los fixtures de test deben usar el shape REAL de las filas de la DB.
+
+**L32: case_state inconsistente entre capas ('activo' legacy vs 'activa' del contrato 9.1)**
+- El rediseño 9.1 (activa|cerrada + motivo_cierre) se aplicó en webhooks y close_case,
+  pero createConversation insertaba 'activo', analytics filtraba por 'activo' y la UI
+  ofrecía el set legacy completo (activo/acuerdo/archivado/desistido/caducado).
+- Efecto: los KPI de Cartera contaban mal los casos tocados por webhooks 9.1.
+- Fix: unificación a 'activa'/'cerrada' en models, analytics-queries, Dashboard,
+  CaseDetailView y tests. El baseline 0001 tiene CHECK (case_state IN ('activa','cerrada')).
+
+### Blockers
+
+**B7: Proyecto Supabase inalcanzable (NXDOMAIN)**
+- wmfsxezfjryivtrjzhmo.supabase.co ya no resuelve DNS: el proyecto fue eliminado/purgado.
+- La app no puede conectarse a la DB con el .env actual. Tests pasan porque mockean todo.
+- Resolución: crear proyecto Supabase nuevo + aplicar db/migrations/0001_baseline.sql +
+  actualizar SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY. Si existía data importante
+  (130 causas históricas importadas en Fase 6), evaluar si hay backup o re-importar
+  desde b/historicas.xlsx.

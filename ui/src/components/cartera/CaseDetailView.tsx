@@ -56,16 +56,13 @@ export default function CaseDetailView({ causaId, onClose }: CaseDetailViewProps
 
   const { conversation, registros, acuerdos, totales } = caseData;
 
+  // Contrato Fase 9.1: case_state es activa|cerrada (el motivo va en motivo_cierre)
   const getStateBadgeColor = (state: string) => {
     const colors: Record<string, string> = {
-      activo: 'bg-blue-100 text-blue-800',
-      pagado: 'bg-yellow-100 text-yellow-800',
-      acuerdo: 'bg-purple-100 text-purple-800',
-      desistido: 'bg-orange-100 text-orange-800',
-      caducado: 'bg-red-100 text-red-800',
-      archivado: 'bg-gray-100 text-gray-800',
+      activa: 'bg-blue-100 text-blue-800',
+      cerrada: 'bg-gray-100 text-gray-800',
     };
-    return colors[state] || colors.activo;
+    return colors[state] || colors.activa;
   };
 
   return (
