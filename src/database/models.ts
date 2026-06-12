@@ -77,7 +77,7 @@ export async function createConversation(
     rit: webhookData.rit as string | undefined,
     etapa: webhookData.etapa as string | undefined,
     monto_demanda: webhookData.monto_demanda as number | undefined,
-    case_state: 'activo',
+    case_state: 'activa',
     ingreso_honorarios: 0,
     pagos_pendientes: 0,
     message_count: 0,
@@ -112,7 +112,7 @@ export async function createSimpleConversation(
   const insert = {
     id: conversationId,
     causa_id: causaId,
-    case_state: 'activo',
+    case_state: 'activa',
     ingreso_honorarios: 0,
     pagos_pendientes: 0,
     message_count: 0,
@@ -661,4 +661,21 @@ export async function getAcuerdosActivos(conversationId: string): Promise<Acuerd
 
   logger.debug({ conversationId, count: (data || []).length }, 'getAcuerdosActivos: rows returned');
   return (data || []) as AcuerdoRecord[];
+}
+
+export async function getCuotasByAcuerdo(acuerdoId: string): Promise<CuotaRecord[]> {
+  const db = getDb();
+
+  const { data, error } = await db
+    .from('cuotas')
+    .select('*')
+    .eq('acuerdo_id', acuerdoId)
+    .order('numero', { ascending: true });
+
+  if (error) {
+    logger.error({ error: error.message, acuerdoId }, 'getCuotasByAcuerdo: database error');
+    throw error;
+  }
+
+  return (data || []) as CuotaRecord[];
 }

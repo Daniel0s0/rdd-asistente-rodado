@@ -58,6 +58,7 @@ vi.mock('@database/models', () => ({
   createCuotas: vi.fn(),
   markCuotaPagada: vi.fn(),
   getAcuerdosActivos: vi.fn(),
+  getCuotasByAcuerdo: vi.fn(),
   updateConversationMetadata: vi.fn(),
 }));
 
@@ -461,23 +462,55 @@ describe('Tool Handlers', () => {
 
   describe('get_caso_estado', () => {
     it('should return acuerdos when they exist', async () => {
+      // Fixtures con el shape REAL de las filas (snake_case, como AcuerdoRecord/CuotaRecord)
       const mockAcuerdos = [
         {
           id: 'acuerdo-001',
-          montoTotal: 500000,
-          cuotasPagadas: 2,
-          cuotasTotal: 5,
-          proximoVencimiento: '2026-07-15',
+          conversation_id: conversationId,
+          monto_total: 500000,
+          cuotas_total: 5,
+          monto_por_cuota: 100000,
+          porcentaje_honorarios: 20,
+          fecha_primer_pago: '2026-05-15',
+          estado: 'activo',
+          created_at: '2026-05-01T00:00:00Z',
         },
         {
           id: 'acuerdo-002',
-          montoTotal: 300000,
-          cuotasPagadas: 1,
-          cuotasTotal: 3,
-          proximoVencimiento: '2026-08-01',
+          conversation_id: conversationId,
+          monto_total: 300000,
+          cuotas_total: 3,
+          monto_por_cuota: 100000,
+          porcentaje_honorarios: 20,
+          fecha_primer_pago: '2026-06-01',
+          estado: 'activo',
+          created_at: '2026-05-20T00:00:00Z',
         },
       ];
+      const cuota = (acuerdoId: string, numero: number, estado: string, fecha: string) => ({
+        id: `${acuerdoId}-c${numero}`,
+        acuerdo_id: acuerdoId,
+        numero,
+        monto: 100000,
+        fecha_vencimiento: fecha,
+        fecha_pago: estado.startsWith('pagada') ? fecha : null,
+        estado,
+        created_at: '2026-05-01T00:00:00Z',
+      });
       vi.mocked(models.getAcuerdosActivos).mockResolvedValue(mockAcuerdos as any);
+      vi.mocked(models.getCuotasByAcuerdo)
+        .mockResolvedValueOnce([
+          cuota('acuerdo-001', 1, 'pagada', '2026-05-15'),
+          cuota('acuerdo-001', 2, 'pagada_con_retraso', '2026-06-15'),
+          cuota('acuerdo-001', 3, 'pendiente', '2026-07-15'),
+          cuota('acuerdo-001', 4, 'pendiente', '2026-08-15'),
+          cuota('acuerdo-001', 5, 'pendiente', '2026-09-15'),
+        ] as any)
+        .mockResolvedValueOnce([
+          cuota('acuerdo-002', 1, 'pagada', '2026-06-01'),
+          cuota('acuerdo-002', 2, 'vencida', '2026-08-01'),
+          cuota('acuerdo-002', 3, 'pendiente', '2026-09-01'),
+        ] as any);
 
       const result = await executeTool(
         'get_caso_estado',
@@ -494,6 +527,8 @@ describe('Tool Handlers', () => {
       expect(result.content).toContain('2026-07-15');
       expect(result.content).toContain('2026-08-01');
       expect(models.getAcuerdosActivos).toHaveBeenCalledWith(conversationId);
+      expect(models.getCuotasByAcuerdo).toHaveBeenCalledWith('acuerdo-001');
+      expect(models.getCuotasByAcuerdo).toHaveBeenCalledWith('acuerdo-002');
     });
 
     it('should return informational message when no acuerdos exist', async () => {
@@ -531,13 +566,18 @@ describe('Tool Handlers', () => {
       const mockAcuerdos = [
         {
           id: 'acuerdo-001',
-          montoTotal: 1500000,
-          cuotasPagadas: 0,
-          cuotasTotal: 5,
-          proximoVencimiento: '2026-06-15',
+          conversation_id: conversationId,
+          monto_total: 1500000,
+          cuotas_total: 5,
+          monto_por_cuota: 300000,
+          porcentaje_honorarios: 20,
+          fecha_primer_pago: '2026-06-15',
+          estado: 'activo',
+          created_at: '2026-05-01T00:00:00Z',
         },
       ];
       vi.mocked(models.getAcuerdosActivos).mockResolvedValue(mockAcuerdos as any);
+      vi.mocked(models.getCuotasByAcuerdo).mockResolvedValue([] as any);
 
       const result = await executeTool(
         'get_caso_estado',
@@ -762,13 +802,29 @@ describe('Tool Handlers', () => {
       const mockAcuerdos = [
         {
           id: 'acuerdo-001',
-          montoTotal: 500000,
-          cuotasPagadas: 0,
-          cuotasTotal: 5,
-          proximoVencimiento: '2026-06-15',
+          conversation_id: conversationId,
+          monto_total: 500000,
+          cuotas_total: 5,
+          monto_por_cuota: 100000,
+          porcentaje_honorarios: 20,
+          fecha_primer_pago: '2026-06-15',
+          estado: 'activo',
+          created_at: '2026-05-01T00:00:00Z',
         },
       ];
       vi.mocked(models.getAcuerdosActivos).mockResolvedValue(mockAcuerdos as any);
+      vi.mocked(models.getCuotasByAcuerdo).mockResolvedValue([
+        {
+          id: 'c1',
+          acuerdo_id: 'acuerdo-001',
+          numero: 1,
+          monto: 100000,
+          fecha_vencimiento: '2026-06-15',
+          fecha_pago: null,
+          estado: 'pendiente',
+          created_at: '2026-05-01T00:00:00Z',
+        },
+      ] as any);
 
       const statusResult = await executeTool(
         'get_caso_estado',

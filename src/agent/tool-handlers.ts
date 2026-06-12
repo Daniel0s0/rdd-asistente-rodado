@@ -7,6 +7,7 @@ import {
   createCuotas,
   markCuotaPagada,
   getAcuerdosActivos,
+  getCuotasByAcuerdo,
   updateConversationMetadata,
 } from '@database/models';
 import { calculateCuotaDates } from './claude-agent';
@@ -125,21 +126,21 @@ export async function executeTool(
         if (acuerdosActivos.length === 0) {
           resultText = 'ℹ️ No hay acuerdos activos en esta causa.';
         } else {
-          const acuerdoInfo = acuerdosActivos
-            .map((acuerdo) => {
-              // Cast inevitable: el template lee campos camelCase (montoTotal, cuotasPagadas,
-              // cuotasTotal, proximoVencimiento) que NO existen en AcuerdoRecord (snake_case).
-              // Se tipa estrecho sin corregir el desajuste para no cambiar comportamiento.
-              const a = acuerdo as unknown as {
-                montoTotal: number;
-                cuotasPagadas: number;
-                cuotasTotal: number;
-                proximoVencimiento: string;
-              };
-              return `- Acuerdo $${a.montoTotal.toLocaleString('es-CL')}: ${a.cuotasPagadas}/${a.cuotasTotal} cuotas pagadas (próximo vencimiento: ${a.proximoVencimiento})`;
-            })
-            .join('\n');
-          resultText = `Acuerdos activos:\n${acuerdoInfo}`;
+          const lineas: string[] = [];
+          for (const acuerdo of acuerdosActivos) {
+            const cuotas = await getCuotasByAcuerdo(acuerdo.id);
+            const pagadas = cuotas.filter(
+              (c) => c.estado === 'pagada' || c.estado === 'pagada_con_retraso'
+            ).length;
+            // cuotas viene ordenado por numero: la primera no pagada es el próximo vencimiento
+            const proxima = cuotas.find(
+              (c) => c.estado === 'pendiente' || c.estado === 'vencida'
+            );
+            lineas.push(
+              `- Acuerdo $${acuerdo.monto_total.toLocaleString('es-CL')}: ${pagadas}/${acuerdo.cuotas_total} cuotas pagadas${proxima ? ` (próximo vencimiento: ${proxima.fecha_vencimiento})` : ''}`
+            );
+          }
+          resultText = `Acuerdos activos:\n${lineas.join('\n')}`;
         }
         break;
       }
