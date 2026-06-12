@@ -21,7 +21,7 @@ export async function retryWithBackoff<T>(
     try {
       return await fn();
     } catch (error) {
-      const err = error as any;
+      const err = error as { code?: number; status?: number };
       lastError = error as Error;
 
       // Determinar si el error es reintentable (429 rate limit o 5xx servidor)

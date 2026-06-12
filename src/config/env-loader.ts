@@ -1,3 +1,5 @@
+/* eslint-disable no-console -- este módulo corre ANTES de cargar .env;
+   el logger (Pino) depende de getEnv() y no puede usarse aquí */
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';

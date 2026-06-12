@@ -168,7 +168,7 @@ export async function updateRegistroRow(
       'Fila REGISTRO actualizada exitosamente'
     );
   } catch (error) {
-    const err = error as any;
+    const err = error as { message?: string; code?: number | string; status?: number };
     logger.error(
       { causaId, error: err.message, codigo: err.code ?? err.status },
       'updateRegistroRow falló'

@@ -1548,3 +1548,25 @@ sin pushear a origin/main.
 ### Tests
 
 191 passing + 2 skipped (4 nuevos: 3 readiness + 1 idempotencia). Build 0 errors, lint 0 errors.
+
+## 2026-06-11 (noche) — Etapa 2 parcial + Etapa 3 avances
+
+### What was built
+
+- **2.1 CI:** .github/workflows/ci.yml (type-check + lint:check + tests + build en push/PR a main).
+  Primer run falló: package-lock.json estaba en .gitignore → removido del ignore y commiteado
+  (npm ci lo requiere; builds reproducibles). Segundo run: ✅ verde en 2m06s.
+- **2.3 Deploy:** docs/DEPLOYMENT.md (checklist, rollback, Nginx+SSL con upgrade Socket.io)
+  + scripts/deploy.sh (deploy automatizado, falla si /health/ready ≠ 200).
+- **Pendiente Etapa 2:** 2.2 migraciones de DB versionadas.
+
+### Estado de deuda técnica (TDs de Phase 6.5)
+
+- **TD1 (tests portfolio-chat): YA ESTABA RESUELTO** — tests/api/agent.test.ts tiene 9 tests
+  de POST /agent/portfolio-chat desde commit 2d8c272. La entrada TD1 estaba desactualizada.
+- **TD2 (race condition __portfolio__): ACEPTADO** — sistema single-user; dos requests
+  simultáneos al portfolio chat son irreales. Con TD3, el insert duplicado además falla
+  limpio por código 23505. No se implementa upsert (Simplicity First).
+- **TD3 (duplicate key por string matching): RESUELTO** — commit eb9051b, error.code === '23505'
+  con fallback al mensaje.
+
