@@ -42,6 +42,7 @@ import {
 } from './message-parser';
 import { AGENT_TOOLS } from './tool-definitions';
 import { processToolUseBlocks } from './tool-handlers';
+import { enqueueSheetsOperation, kickSheetsOutbox } from '@sheets/outbox';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Error classes
@@ -456,6 +457,13 @@ export class ClaudeAgent {
       ? this.buildSheetsSyncData(parsedIntent, financialData)
       : undefined;
 
+    // ── 13. Replicar a Sheets vía outbox (Etapa 4.1) ──────────────────────────
+    // Encolar es durable (sobrevive caídas de Sheets); kick procesa en segundos.
+    if (sheetsSyncData) {
+      const queued = await enqueueSheetsOperation('update_registro', causaId, sheetsSyncData.fields);
+      if (queued) kickSheetsOutbox();
+    }
+
     logger.info(
       {
         causaId,
@@ -810,6 +818,12 @@ export class ClaudeAgent {
       shouldSyncSheets && financialData
         ? this.buildSheetsSyncData(parsedIntent, financialData)
         : undefined;
+
+    // ── 13. Replicar a Sheets vía outbox (Etapa 4.1) ──────────────────────────
+    if (sheetsSyncData) {
+      const queued = await enqueueSheetsOperation('update_registro', causaId, sheetsSyncData.fields);
+      if (queued) kickSheetsOutbox();
+    }
 
     logger.info(
       {

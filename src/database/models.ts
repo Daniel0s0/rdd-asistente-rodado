@@ -679,3 +679,98 @@ export async function getCuotasByAcuerdo(acuerdoId: string): Promise<CuotaRecord
 
   return (data || []) as CuotaRecord[];
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sheets Outbox (Etapa 4.1) — operaciones de Sheets pendientes de reintento
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type SheetsOutboxOperation = 'append_registro' | 'update_registro';
+
+export interface SheetsOutboxEntry {
+  id: string;
+  operation: SheetsOutboxOperation;
+  causa_id: string;
+  payload: Record<string, unknown>;
+  estado: 'pendiente' | 'procesado' | 'error';
+  intentos: number;
+  ultimo_error: string | null;
+  created_at: string;
+  processed_at: string | null;
+}
+
+export async function createOutboxEntry(
+  operation: SheetsOutboxOperation,
+  causaId: string,
+  payload: Record<string, unknown>
+): Promise<SheetsOutboxEntry> {
+  const db = getDb();
+
+  const { data, error } = await (db.from('sheets_outbox') as unknown as InsertableTable)
+    .insert([{ operation, causa_id: causaId, payload }])
+    .select()
+    .single();
+
+  if (error) {
+    logger.error({ error: error.message, operation, causaId }, 'createOutboxEntry: database error');
+    throw error;
+  }
+
+  logger.info({ operation, causaId }, 'Sheets outbox: operación encolada');
+  return data as SheetsOutboxEntry;
+}
+
+export async function getOutboxPendientes(limit = 10): Promise<SheetsOutboxEntry[]> {
+  const db = getDb();
+
+  const { data, error } = await db
+    .from('sheets_outbox')
+    .select('*')
+    .eq('estado', 'pendiente')
+    .order('created_at', { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    logger.error({ error: error.message }, 'getOutboxPendientes: database error');
+    throw error;
+  }
+
+  return (data || []) as SheetsOutboxEntry[];
+}
+
+export async function markOutboxProcesado(id: string): Promise<void> {
+  const db = getDb();
+
+  const { error } = await (db.from('sheets_outbox') as unknown as UpdatableTable)
+    .update({ estado: 'procesado', processed_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    logger.error({ error: error.message, outboxId: id }, 'markOutboxProcesado: database error');
+    throw error;
+  }
+}
+
+export async function markOutboxFallido(
+  id: string,
+  intentos: number,
+  errorMsg: string,
+  maxIntentos: number
+): Promise<void> {
+  const db = getDb();
+  // Tras maxIntentos el entry pasa a 'error' (requiere intervención manual);
+  // antes de eso vuelve a 'pendiente' para el próximo ciclo del worker.
+  const estado = intentos >= maxIntentos ? 'error' : 'pendiente';
+
+  const { error } = await (db.from('sheets_outbox') as unknown as UpdatableTable)
+    .update({ estado, intentos, ultimo_error: errorMsg })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    logger.error({ error: error.message, outboxId: id }, 'markOutboxFallido: database error');
+    throw error;
+  }
+}

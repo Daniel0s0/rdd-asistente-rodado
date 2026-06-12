@@ -56,6 +56,11 @@ vi.mock('@config/env', () => ({
 }));
 
 // ─── Mock @database/supabase BEFORE anything else ────────────────────────────
+vi.mock('@sheets/outbox', () => ({
+  enqueueSheetsOperation: vi.fn(async () => true),
+  kickSheetsOutbox: vi.fn(),
+}));
+
 vi.mock('@database/supabase', () => ({
   getDb: vi.fn(),
   closeDb: vi.fn(),
@@ -380,6 +385,15 @@ describe('ClaudeAgent.chat()', () => {
     expect(response.shouldSyncSheets).toBe(true);
     expect(response.sheetsSyncData).toBeDefined();
     expect(response.sheetsSyncData?.action).toBe('UPDATE');
+
+    // Etapa 4.1: el acuerdo se replica a Sheets vía outbox
+    const { enqueueSheetsOperation, kickSheetsOutbox } = await import('@sheets/outbox');
+    expect(enqueueSheetsOperation).toHaveBeenCalledWith(
+      'update_registro',
+      testCausaId,
+      expect.any(Object)
+    );
+    expect(kickSheetsOutbox).toHaveBeenCalled();
   });
 
   it('detects intent "consulta" → shouldSyncSheets = false', async () => {

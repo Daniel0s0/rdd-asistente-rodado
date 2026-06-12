@@ -15,6 +15,7 @@ import {
 } from '@api/webhook';
 import { agentChatHandler, portfolioChatHandler } from '@api/agent';
 import { casesHandler } from '@api/cases';
+import { digestHandler } from '@api/digest';
 import {
   handleGetCartera,
   handleGetIngresos,
@@ -26,6 +27,7 @@ import {
 import { registerSocketHandlers } from '@api/socket-handler';
 import { requireApiKey } from '@middleware/auth';
 import { requestIdMiddleware } from '@middleware/request-id';
+import { startSheetsOutboxWorker, stopSheetsOutboxWorker } from '@sheets/outbox';
 import { webhookLimiter, chatLimiter } from '@middleware/rate-limit';
 import type { ClientToServerEvents, ServerToClientEvents } from '@domain/agent';
 
@@ -75,6 +77,7 @@ function main() {
   app.post('/agent/chat', requireApiKey, chatLimiter, agentChatHandler);
   app.post('/agent/portfolio-chat', requireApiKey, chatLimiter, portfolioChatHandler);
   app.get('/cases', requireApiKey, chatLimiter, casesHandler);
+  app.get('/agent/digest', requireApiKey, chatLimiter, digestHandler);
 
   app.get('/analytics/cartera', requireApiKey, handleGetCartera);
   app.get('/analytics/ingresos', requireApiKey, handleGetIngresos);
@@ -111,11 +114,14 @@ function main() {
     if (process.send) {
       process.send('ready');
     }
+    // Etapa 4.1: worker que reintenta operaciones de Sheets encoladas
+    startSheetsOutboxWorker();
   });
 
   // Etapa 1.1: graceful shutdown — cierra Socket.io y drena conexiones HTTP
   const shutdown = (signal: string) => {
     logger.info({ signal }, 'Shutdown signal received — closing server');
+    stopSheetsOutboxWorker();
     io.close();
     httpServer.close(() => {
       logger.info('Server closed — exiting');

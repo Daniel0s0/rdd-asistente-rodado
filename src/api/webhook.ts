@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { getEnv } from '@config/env';
 import { logger } from '@utils/logger';
 import { appendRegistroRow } from '@sheets/client';
+import { enqueueSheetsOperation } from '@sheets/outbox';
 import {
   createConversation,
   getConversationByCausaId,
@@ -207,7 +208,23 @@ export async function webhookCausaNuevaHandler(
       fechaIngreso: new Date().toISOString(),
     };
 
-    const sheetsRowId = await appendRegistroRow(registroRow);
+    // Etapa 4.1: si Sheets falla, encolar en outbox — el webhook NUNCA pierde
+    // el registro por una caída transitoria de Google.
+    let sheetsRowId: string | null = null;
+    let sheetsQueued = false;
+    try {
+      sheetsRowId = await appendRegistroRow(registroRow);
+    } catch (sheetsError) {
+      logger.warn(
+        { causaId: causa.causa_id, error: sheetsError },
+        'appendRegistroRow falló — encolando en sheets_outbox'
+      );
+      sheetsQueued = await enqueueSheetsOperation(
+        'append_registro',
+        causa.causa_id,
+        registroRow as unknown as Record<string, unknown>
+      );
+    }
 
     // Crear conversación en base de datos para habilitar multi-turn chat
     logger.debug({ causaId: causa.causa_id }, 'Creating conversation');
@@ -237,6 +254,7 @@ export async function webhookCausaNuevaHandler(
       conversation_id: conversation.id,
       drive_folder_id: driveFolder.folderId,
       sheets_row_id: sheetsRowId,
+      ...(sheetsQueued && { sheets_queued: true }),
       message: 'Causa registrada con carpetas en Drive. ¿Cuál es el resultado del juicio?',
     });
   } catch (error) {

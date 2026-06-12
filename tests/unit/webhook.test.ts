@@ -24,6 +24,10 @@ vi.mock('@sheets/client', () => ({
   appendRegistroRow: vi.fn(async () => 'A42'),
 }));
 
+vi.mock('@sheets/outbox', () => ({
+  enqueueSheetsOperation: vi.fn(async () => true),
+}));
+
 vi.mock('@database/models', () => ({
   createConversation: vi.fn().mockResolvedValue({
     id: 'mock-conversation-uuid-unit-test',
@@ -229,6 +233,42 @@ describe('webhookCausaNuevaHandler', () => {
     expect(createCaseFolder).not.toHaveBeenCalled();
     expect(appendRegistroRow).not.toHaveBeenCalled();
     expect(createConversation).not.toHaveBeenCalled();
+  });
+
+  it('responds 201 and queues the row in sheets_outbox when Sheets append fails', async () => {
+    const { appendRegistroRow } = await import('@sheets/client');
+    const { enqueueSheetsOperation } = await import('@sheets/outbox');
+    const { createConversation, getConversationByCausaId } = await import('@database/models');
+
+    vi.mocked(getConversationByCausaId).mockResolvedValueOnce(null);
+    vi.mocked(appendRegistroRow).mockRejectedValueOnce(new Error('Sheets API 503'));
+    vi.mocked(enqueueSheetsOperation).mockClear();
+    vi.mocked(createConversation).mockClear();
+
+    const body = { causa_id: 'test-outbox', cliente_nombre: 'Test Client' };
+    const signature = generateSignature(body);
+    const req = createRequest(body, signature) as any;
+    const res = createResponse() as any;
+
+    await webhookCausaNuevaHandler(req, res);
+
+    // El webhook NO falla por Sheets: responde 201 con la operación encolada
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        causa_id: 'test-outbox',
+        sheets_row_id: null,
+        sheets_queued: true,
+      })
+    );
+    expect(enqueueSheetsOperation).toHaveBeenCalledWith(
+      'append_registro',
+      'test-outbox',
+      expect.objectContaining({ causaId: 'test-outbox' })
+    );
+    // La conversación se crea igual (el dato de negocio no se pierde)
+    expect(createConversation).toHaveBeenCalled();
   });
 
   it.skip('accepts valid payload with correct signature', async () => {
