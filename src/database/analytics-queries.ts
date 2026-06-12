@@ -458,3 +458,43 @@ export async function getCaseDetail(causaId: string): Promise<CaseDetail | null>
     totales,
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Session Digest (Etapa 4.3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface CasoPendiente {
+  causaId: string;
+  clienteNombre: string | null;
+  pendingAction: string;
+  updatedAt: string;
+}
+
+/** Casos activos con una acción proactiva pendiente del agente (ej. preguntar términos de acuerdo). */
+export async function getCasosConPendingAction(): Promise<CasoPendiente[]> {
+  const db = getDb();
+
+  const { data, error } = await db
+    .from('conversations')
+    .select('causa_id, cliente_nombre, pending_action, updated_at')
+    .not('pending_action', 'is', null)
+    .eq('case_state', 'activa')
+    .order('updated_at', { ascending: true });
+
+  if (error) {
+    logger.error({ error: error.message }, 'getCasosConPendingAction: database error');
+    throw error;
+  }
+
+  return ((data || []) as Array<{
+    causa_id: string;
+    cliente_nombre: string | null;
+    pending_action: string;
+    updated_at: string;
+  }>).map((row) => ({
+    causaId: row.causa_id,
+    clienteNombre: row.cliente_nombre,
+    pendingAction: row.pending_action,
+    updatedAt: row.updated_at,
+  }));
+}

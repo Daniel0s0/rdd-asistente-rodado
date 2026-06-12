@@ -1605,3 +1605,38 @@ sin pushear a origin/main.
   actualizar SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY. Si existía data importante
   (130 causas históricas importadas en Fase 6), evaluar si hay backup o re-importar
   desde b/historicas.xlsx.
+
+## 2026-06-12 (tarde) — Etapa 4.1: Outbox de Sheets + cierre de brecha de sincronización
+
+### Decisions Made
+
+**D43: Consistencia eventual para Sheets (reemplaza rollback-todo)**
+- Chose: patrón outbox — si Sheets falla, la operación queda en sheets_outbox y un worker
+  la reintenta (60s, máx 5 intentos → estado 'error' para intervención manual)
+- Reason: el invariant original ("si Google falla, rollback todo") hacía que un 503 de
+  Google PERDIERA el registro del webhook. Para la finalidad del sistema (registros al día)
+  es peor perder el dato que tener Sheets desfasado unos segundos.
+- Supabase sigue siendo la fuente de verdad; Sheets es réplica eventual.
+
+### Brecha cerrada (auditoría 4.2)
+
+**updateRegistroRow nunca se llamaba**: el agente calculaba sheetsSyncData y lo devolvía
+en la respuesta HTTP, pero nadie escribía en Sheets — los acuerdos/pagos registrados por
+chat solo quedaban en Supabase. Ahora chat() y chatStream() encolan 'update_registro'
++ kick inmediato (el dato llega a Sheets en segundos, con reintentos garantizados).
+
+### Tests
+
+204 passing | 2 skipped (+8: outbox unit, webhook fallback, agente→outbox).
+
+**D44: Session Digest determinístico (sin Claude)**
+- GET /agent/digest arma el resumen con queries directas (pending_actions, cuotas vencidas,
+  vencimientos a 7 días) + template en español. Sin costo/latencia/fallos de LLM para datos
+  perfectamente templateables; la narrativa conversacional ya la cubre el Portfolio Chat.
+
+**L33 (hallazgo del validador): el payload de update_registro no coincidía con updateRegistroRow**
+- buildSheetsSyncData produce {intent, monto, cuotas, fecha} pero updateRegistroRow espera
+  {tipoIngreso, acuerdoMonto|montoPago, acuerdoCuotas, acuerdoFecha|fechaPago} — el update
+  corría "exitoso" sin escribir nada. Corregido con mapeo por intent en executeOutboxEntry
+  + test que fija los nombres de columna. Lección: validar contratos entre módulos con tests
+  que usen los nombres REALES de ambos lados.

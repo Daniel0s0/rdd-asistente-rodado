@@ -710,7 +710,7 @@ Last updated: 2026-06-11
 | 1 | Robustez crítica: error handlers globales, /health/ready, idempotencia webhooks, PM2 | ✅ (2026-06-11) |
 | 2 | Pipeline de deploy: CI GitHub Actions, migraciones versionadas, DEPLOYMENT.md | ✅ (2026-06-12) CI + DEPLOYMENT.md + deploy.sh + db/migrations con baseline |
 | 3 | Calidad: 0 lint warnings, TDs, request ID logging | ✅ (2026-06-12) lint 0 warnings con gate en CI, TDs cerrados, request ID en logs |
-| 4 | Confiabilidad flujo de ingresos: outbox Sheets, auditoría E2E financiera, Fase 10 Session Digest | 📋 |
+| 4 | Confiabilidad flujo de ingresos: outbox Sheets, auditoría E2E financiera, Fase 10 Session Digest | ✅ (2026-06-12) outbox + worker, brecha updateRegistroRow cerrada, GET /agent/digest |
 | 5 | Salida a producción: VPS, Nginx/HTTPS, webhooks reales JPourney, smoke tests | 📋 |
 
 **⚠️ BLOCKER B7 (ver PROGRESS.md):** el proyecto Supabase configurado ya no existe (NXDOMAIN).
