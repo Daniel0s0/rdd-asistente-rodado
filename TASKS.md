@@ -706,9 +706,9 @@ Last updated: 2026-06-11
 
 | Etapa | Contenido | Estado |
 |-------|-----------|--------|
-| 0 | Baseline: push, docs sincronizados | 🚧 En curso (2026-06-11) |
-| 1 | Robustez crítica: error handlers globales, /health/ready, idempotencia webhooks, PM2 | 📋 |
-| 2 | Pipeline de deploy: CI GitHub Actions, migraciones versionadas, DEPLOYMENT.md | 📋 |
+| 0 | Baseline: push, docs sincronizados | ✅ (2026-06-11, commit c537382) |
+| 1 | Robustez crítica: error handlers globales, /health/ready, idempotencia webhooks, PM2 | ✅ (2026-06-11) |
+| 2 | Pipeline de deploy: CI GitHub Actions, migraciones versionadas, DEPLOYMENT.md | 🚧 CI ✅ + DEPLOYMENT.md ✅ + deploy.sh ✅ — falta 2.2 migraciones versionadas |
 | 3 | Calidad: 0 lint warnings, TDs (TD1/TD3), request ID logging | 📋 |
 | 4 | Confiabilidad flujo de ingresos: outbox Sheets, auditoría E2E financiera, Fase 10 Session Digest | 📋 |
 | 5 | Salida a producción: VPS, Nginx/HTTPS, webhooks reales JPourney, smoke tests | 📋 |
