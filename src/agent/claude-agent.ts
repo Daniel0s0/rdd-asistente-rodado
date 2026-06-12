@@ -27,6 +27,10 @@ import {
   getIncomeData,
   getAcuerdosStatus,
   getCaseResults,
+  CartKPI,
+  IncomeData,
+  AcuerdoStatus,
+  CaseResults,
 } from '@database/analytics-queries';
 import {
   parseUserIntent,
@@ -222,7 +226,7 @@ export class ClaudeAgent {
         messages: claudeMessages,
         max_tokens: 2048,
         temperature: env.CLAUDE_TEMPERATURE,
-        tools: AGENT_TOOLS as any, // Type: Anthropic SDK Tool[]
+        tools: AGENT_TOOLS as Anthropic.Tool[],
       });
     } catch (err) {
       const apiErr = err as AnthropicAPIError;
@@ -243,8 +247,7 @@ export class ClaudeAgent {
 
     // ── 7.5 Handle tool use loop ────────────────────────────────────────────
     let assistantContent = '';
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const currentMessages: any[] = [...claudeMessages]; // Copy for loop iterations (typed broadly to support tool_use/tool_result content)
+    const currentMessages: Anthropic.MessageParam[] = [...claudeMessages]; // Copy for loop iterations (supports tool_use/tool_result content)
     let toolUseOccurred = false;
     const executedTools: string[] = []; // Track which tools were called
 
@@ -254,7 +257,7 @@ export class ClaudeAgent {
       const toolUseBlocks: Array<{
         id: string;
         name: string;
-        input: Record<string, any>;
+        input: Record<string, unknown>;
       }> = [];
 
       for (const contentBlock of response.content) {
@@ -262,7 +265,7 @@ export class ClaudeAgent {
           toolUseBlocks.push({
             id: contentBlock.id,
             name: contentBlock.name,
-            input: contentBlock.input as Record<string, any>,
+            input: contentBlock.input as Record<string, unknown>,
           });
         } else if (contentBlock.type === 'text') {
           assistantContent = contentBlock.text;
@@ -296,10 +299,11 @@ export class ClaudeAgent {
       });
 
       // Build tool result blocks
-      const toolResultBlocks = toolResults.map((result) => ({
+      const toolResultBlocks: Anthropic.ToolResultBlockParam[] = toolResults.map((result) => ({
         type: 'tool_result' as const,
         tool_use_id: result.tool_use_id,
-        content: result.content,
+        // SDK 0.23 types don't admit string content here, but the API does — keep wire format unchanged
+        content: result.content as unknown as Anthropic.ToolResultBlockParam['content'],
       }));
 
       currentMessages.push({
@@ -315,7 +319,7 @@ export class ClaudeAgent {
           messages: currentMessages,
           max_tokens: 2048,
           temperature: env.CLAUDE_TEMPERATURE,
-          tools: AGENT_TOOLS as any,
+          tools: AGENT_TOOLS as Anthropic.Tool[],
         });
       } catch (err) {
         const apiErr = err as AnthropicAPIError;
@@ -557,7 +561,7 @@ export class ClaudeAgent {
         messages: claudeMessages,
         max_tokens: 2048,
         temperature: env.CLAUDE_TEMPERATURE,
-        tools: AGENT_TOOLS as any,
+        tools: AGENT_TOOLS as Anthropic.Tool[],
       });
 
       // Stream first response tokens (before tool use)
@@ -598,8 +602,7 @@ export class ClaudeAgent {
     // ── 7.5 Handle tool use (non-streaming for MVP) ─────────────────────────
     let finalMessage = await stream.finalMessage();
     let assistantContent = '';
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const currentMessages: any[] = [...claudeMessages];
+    const currentMessages: Anthropic.MessageParam[] = [...claudeMessages];
     let toolUseOccurred = false;
     const executedTools: string[] = []; // Track which tools were called
 
@@ -609,7 +612,7 @@ export class ClaudeAgent {
       const toolUseBlocks: Array<{
         id: string;
         name: string;
-        input: Record<string, any>;
+        input: Record<string, unknown>;
       }> = [];
 
       for (const contentBlock of response.content) {
@@ -617,7 +620,7 @@ export class ClaudeAgent {
           toolUseBlocks.push({
             id: contentBlock.id,
             name: contentBlock.name,
-            input: contentBlock.input as Record<string, any>,
+            input: contentBlock.input as Record<string, unknown>,
           });
         } else if (contentBlock.type === 'text') {
           assistantContent = contentBlock.text;
@@ -648,10 +651,11 @@ export class ClaudeAgent {
         content: response.content,
       });
 
-      const toolResultBlocks = toolResults.map((result) => ({
+      const toolResultBlocks: Anthropic.ToolResultBlockParam[] = toolResults.map((result) => ({
         type: 'tool_result' as const,
         tool_use_id: result.tool_use_id,
-        content: result.content,
+        // SDK 0.23 types don't admit string content here, but the API does — keep wire format unchanged
+        content: result.content as unknown as Anthropic.ToolResultBlockParam['content'],
       }));
 
       currentMessages.push({
@@ -667,7 +671,7 @@ export class ClaudeAgent {
           messages: currentMessages,
           max_tokens: 2048,
           temperature: env.CLAUDE_TEMPERATURE,
-          tools: AGENT_TOOLS as any,
+          tools: AGENT_TOOLS as Anthropic.Tool[],
         });
       } catch (err) {
         const apiErr = err as AnthropicAPIError;
@@ -1258,10 +1262,10 @@ Luego continúa con cualquier cosa que el usuario haya escrito en su mensaje ori
    * Formats analytics data as readable context for portfolio-wide queries.
    */
   private buildPortfolioSystemPrompt(
-    cartKPI: any,
-    incomeData: any,
-    acuerdos: any[],
-    resultados: any
+    cartKPI: CartKPI,
+    incomeData: IncomeData,
+    acuerdos: AcuerdoStatus[],
+    resultados: CaseResults
   ): string {
     const formatCurrency = (num: number) => {
       if (num >= 1_000_000) {
@@ -1276,13 +1280,13 @@ Luego continúa con cualquier cosa que el usuario haya escrito en su mensaje ori
     // Format last 6 months of income
     const lastSixMonths = incomeData.porMes
       .slice(-6)
-      .map((m: any) => `${m.mes}: ${formatCurrency(m.total)} (cobranza ${formatCurrency(m.cobranza)} / sentencia ${formatCurrency(m.sentencia)} / acuerdo ${formatCurrency(m.acuerdo)})`)
+      .map((m) => `${m.mes}: ${formatCurrency(m.total)} (cobranza ${formatCurrency(m.cobranza)} / sentencia ${formatCurrency(m.sentencia)} / acuerdo ${formatCurrency(m.acuerdo)})`)
       .join('\n');
 
     // Format active agreements
     const acuerdosFormatted = acuerdos
       .slice(0, 10) // Show first 10 to keep prompt reasonable
-      .map((a: any) => `${a.causaId}: ${formatCurrency(a.montoTotal)} (${a.cuotasPagadas}/${a.cuotasTotal} cuotas, próx ${a.proximoVencimiento}, ${a.estadoGeneral})`)
+      .map((a) => `${a.causaId}: ${formatCurrency(a.montoTotal)} (${a.cuotasPagadas}/${a.cuotasTotal} cuotas, próx ${a.proximoVencimiento}, ${a.estadoGeneral})`)
       .join('\n');
 
     return `Eres Rodado, asistente del estudio jurídico RDD. Respondes preguntas sobre la cartera completa del bufete.

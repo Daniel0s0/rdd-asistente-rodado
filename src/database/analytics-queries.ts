@@ -9,6 +9,43 @@ import { getDb } from './supabase';
 import { logger } from '@utils/logger';
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Supabase row shapes (client is untyped — query results are cast to these)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface MontoRow {
+  monto: number | null;
+}
+
+interface ConversationStateRow {
+  id?: string;
+  case_state: string;
+}
+
+interface RegistroIncomeRow {
+  tipo: string;
+  monto: number | null;
+  fecha: string;
+}
+
+interface AcuerdoDetailRow {
+  id: string;
+  monto_total: number;
+  cuotas_total: number;
+  estado: string;
+}
+
+interface AcuerdoRow extends AcuerdoDetailRow {
+  conversation_id: string;
+}
+
+interface CuotaStatusRow {
+  numero: number;
+  fecha_vencimiento: string;
+  fecha_pago: string | null;
+  estado: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // KPI Queries
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -44,7 +81,7 @@ export async function getCartKPI(): Promise<CartKPI> {
     throw registrosAnioError;
   }
 
-  const totalCobradoAnio = (registrosAnio as any[] || [])
+  const totalCobradoAnio = ((registrosAnio || []) as MontoRow[])
     .reduce((sum, r) => sum + (r.monto || 0), 0);
 
   const { data: registrosMes, error: registrosMesError } = await db
@@ -58,7 +95,7 @@ export async function getCartKPI(): Promise<CartKPI> {
     throw registrosMesError;
   }
 
-  const cobradoEsteMes = (registrosMes as any[] || [])
+  const cobradoEsteMes = ((registrosMes || []) as MontoRow[])
     .reduce((sum, r) => sum + (r.monto || 0), 0);
 
   const { data: acuerdos, error: acuerdosError } = await db
@@ -96,13 +133,13 @@ export async function getCartKPI(): Promise<CartKPI> {
     throw conversationsError;
   }
 
-  const convData = conversations || [];
-  const causasActivas = convData.filter((c: any) => c.case_state === 'activo').length;
-  const causasDesistidas = convData.filter((c: any) => c.case_state === 'desistido').length;
-  const causasCaducadas = convData.filter((c: any) => c.case_state === 'caducado').length;
-  const causasPagadas = convData.filter((c: any) => c.case_state === 'pagado').length;
+  const convData = (conversations || []) as ConversationStateRow[];
+  const causasActivas = convData.filter((c) => c.case_state === 'activo').length;
+  const causasDesistidas = convData.filter((c) => c.case_state === 'desistido').length;
+  const causasCaducadas = convData.filter((c) => c.case_state === 'caducado').length;
+  const causasPagadas = convData.filter((c) => c.case_state === 'pagado').length;
 
-  const convWithResult = convData.filter((c: any) => c.case_state !== 'activo').length;
+  const convWithResult = convData.filter((c) => c.case_state !== 'activo').length;
   const porcentajeResultados = convData.length > 0
     ? Math.round((convWithResult / convData.length) * 100)
     : 0;
@@ -158,14 +195,14 @@ export async function getIncomeData(from: string, to: string): Promise<IncomeDat
   let totalSentencia = 0;
   let totalAcuerdo = 0;
 
-  for (const reg of registros || []) {
-    const mes = (reg as any).fecha.slice(0, 7);
+  for (const reg of (registros || []) as RegistroIncomeRow[]) {
+    const mes = reg.fecha.slice(0, 7);
     if (!byMonth[mes]) {
       byMonth[mes] = { total: 0, cobranza: 0, sentencia: 0, acuerdo: 0 };
     }
 
-    const tipo = (reg as any).tipo;
-    const monto = (reg as any).monto || 0;
+    const tipo = reg.tipo;
+    const monto = reg.monto || 0;
 
     byMonth[mes].total += monto;
 
@@ -227,17 +264,17 @@ export async function getAcuerdosStatus(): Promise<AcuerdoStatus[]> {
 
   const result: AcuerdoStatus[] = [];
 
-  for (const acuerdo of acuerdos || []) {
+  for (const acuerdo of (acuerdos || []) as AcuerdoRow[]) {
     const { data: conversation } = await db
       .from('conversations')
       .select('causa_id')
-      .eq('id', (acuerdo as any).conversation_id)
+      .eq('id', acuerdo.conversation_id)
       .single();
 
     const { data: cuotas, error: cuotasError } = await db
       .from('cuotas')
       .select('numero, fecha_vencimiento, fecha_pago, estado')
-      .eq('acuerdo_id', (acuerdo as any).id)
+      .eq('acuerdo_id', acuerdo.id)
       .order('numero', { ascending: true });
 
     if (cuotasError) {
@@ -245,29 +282,29 @@ export async function getAcuerdosStatus(): Promise<AcuerdoStatus[]> {
       continue;
     }
 
-    const cuotasData = cuotas || [];
+    const cuotasData = (cuotas || []) as CuotaStatusRow[];
     const now = new Date().toISOString().split('T')[0];
 
-    const cuotasPagadas = cuotasData.filter((c: any) => c.fecha_pago !== null).length;
+    const cuotasPagadas = cuotasData.filter((c) => c.fecha_pago !== null).length;
     const cuotasVencidas = cuotasData.filter(
-      (c: any) => c.fecha_vencimiento < now && c.fecha_pago === null
+      (c) => c.fecha_vencimiento < now && c.fecha_pago === null
     ).length;
-    const proximoCuota = cuotasData.find((c: any) => c.fecha_pago === null);
-    const proximoVencimiento = proximoCuota ? (proximoCuota as any).fecha_vencimiento : null;
+    const proximoCuota = cuotasData.find((c) => c.fecha_pago === null);
+    const proximoVencimiento = proximoCuota ? proximoCuota.fecha_vencimiento : null;
 
     let estadoGeneral: 'al_dia' | 'con_retraso' | 'vencido' = 'al_dia';
     if (cuotasVencidas > 0) {
       estadoGeneral = 'vencido';
-    } else if (cuotasData.some((c: any) => c.estado === 'pagada_con_retraso')) {
+    } else if (cuotasData.some((c) => c.estado === 'pagada_con_retraso')) {
       estadoGeneral = 'con_retraso';
     }
 
     result.push({
-      causaId: (conversation as any)?.causa_id || 'unknown',
-      acuerdoId: (acuerdo as any).id,
-      montoTotal: (acuerdo as any).monto_total,
+      causaId: (conversation as { causa_id?: string } | null)?.causa_id || 'unknown',
+      acuerdoId: acuerdo.id,
+      montoTotal: acuerdo.monto_total,
       cuotasPagadas,
-      cuotasTotal: (acuerdo as any).cuotas_total,
+      cuotasTotal: acuerdo.cuotas_total,
       proximoVencimiento,
       cuotasVencidas,
       estadoGeneral,
@@ -304,13 +341,13 @@ export async function getCaseResults(): Promise<CaseResults> {
     throw error;
   }
 
-  const data = conversations || [];
+  const data = (conversations || []) as ConversationStateRow[];
   const total = data.length;
-  const conResultado = data.filter((c: any) => c.case_state !== 'activo').length;
-  const sinResultado = data.filter((c: any) => c.case_state === 'activo').length;
-  const desistidas = data.filter((c: any) => c.case_state === 'desistido').length;
-  const caducadas = data.filter((c: any) => c.case_state === 'caducado').length;
-  const pagadas = data.filter((c: any) => c.case_state === 'pagado').length;
+  const conResultado = data.filter((c) => c.case_state !== 'activo').length;
+  const sinResultado = data.filter((c) => c.case_state === 'activo').length;
+  const desistidas = data.filter((c) => c.case_state === 'desistido').length;
+  const caducadas = data.filter((c) => c.case_state === 'caducado').length;
+  const pagadas = data.filter((c) => c.case_state === 'pagado').length;
   const activas = sinResultado;
 
   return { total, conResultado, sinResultado, desistidas, caducadas, pagadas, activas };
@@ -364,7 +401,7 @@ export async function getCaseDetail(causaId: string): Promise<CaseDetail | null>
     return null;
   }
 
-  const conversation = conversationData as any;
+  const conversation = conversationData as unknown as CaseDetail['conversation'];
   const conversationId = conversation.id;
 
   // 2. Get registros
@@ -379,7 +416,7 @@ export async function getCaseDetail(causaId: string): Promise<CaseDetail | null>
     throw registrosError;
   }
 
-  const registros = (registrosData || []) as any[];
+  const registros = (registrosData || []) as CaseDetail['registros'];
 
   // 3. Get acuerdos with cuotas
   const { data: acuerdosData, error: acuerdosError } = await db
@@ -392,17 +429,17 @@ export async function getCaseDetail(causaId: string): Promise<CaseDetail | null>
     throw acuerdosError;
   }
 
-  const acuerdosWithCuotas: any[] = [];
-  for (const acuerdo of acuerdosData || []) {
+  const acuerdosWithCuotas: CaseDetail['acuerdos'] = [];
+  for (const acuerdo of (acuerdosData || []) as AcuerdoDetailRow[]) {
     const { data: cuotasData } = await db
       .from('cuotas')
       .select('numero, monto, fecha_vencimiento, fecha_pago, estado')
-      .eq('acuerdo_id', (acuerdo as any).id)
+      .eq('acuerdo_id', acuerdo.id)
       .order('numero', { ascending: true });
 
     acuerdosWithCuotas.push({
-      ...(acuerdo as any),
-      cuotas: cuotasData || [],
+      ...acuerdo,
+      cuotas: (cuotasData || []) as CaseDetail['acuerdos'][number]['cuotas'],
     });
   }
 
