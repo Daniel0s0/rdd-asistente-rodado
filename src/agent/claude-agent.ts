@@ -252,7 +252,7 @@ export class ClaudeAgent {
     const executedTools: string[] = []; // Track which tools were called
 
     let response = claudeResponse;
-    while (true) {
+    for (;;) {
       // Check for tool use blocks
       const toolUseBlocks: Array<{
         id: string;
@@ -608,7 +608,7 @@ export class ClaudeAgent {
 
     // Tool use loop (same as chat())
     let response = finalMessage;
-    while (true) {
+    for (;;) {
       const toolUseBlocks: Array<{
         id: string;
         name: string;

@@ -12,9 +12,10 @@
     "test:watch": "vitest --watch",
     "test:coverage": "vitest --coverage",
     "lint": "eslint src --fix",
-    "lint:check": "eslint src",
+    "lint:check": "eslint src --max-warnings 0",
     "type-check": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.ts\"",
+    "db:status": "tsx scripts/db-status.ts",
     "pm2:start": "pm2 start deployment/pm2.config.js",
     "pm2:stop": "pm2 stop rdd",
     "pm2:logs": "pm2 logs rdd"

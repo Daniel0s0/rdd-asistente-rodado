@@ -25,6 +25,7 @@ import {
 } from '@api/analytics';
 import { registerSocketHandlers } from '@api/socket-handler';
 import { requireApiKey } from '@middleware/auth';
+import { requestIdMiddleware } from '@middleware/request-id';
 import { webhookLimiter, chatLimiter } from '@middleware/rate-limit';
 import type { ClientToServerEvents, ServerToClientEvents } from '@domain/agent';
 
@@ -58,6 +59,7 @@ function main() {
     })
   );
   app.use(express.json());
+  app.use(requestIdMiddleware);
 
   app.use((req: Request, _res: Response, next: NextFunction) => {
     logger.debug({ method: req.method, path: req.path }, 'Incoming request');

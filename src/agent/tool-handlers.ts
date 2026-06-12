@@ -35,7 +35,7 @@ export interface ToolResult {
 export async function executeTool(
   toolName: string,
   toolUseId: string,
-  input: Record<string, any>,
+  input: Record<string, unknown>,
   conversationId: string
 ): Promise<ToolResult> {
   logger.debug(
@@ -48,7 +48,11 @@ export async function executeTool(
 
     switch (toolName) {
       case 'create_registro': {
-        const { tipo, monto, fecha } = input;
+        const { tipo, monto, fecha } = input as {
+          tipo: 'cobranza' | 'sentencia' | 'gasto';
+          monto: number;
+          fecha: string;
+        };
         const registro = await createRegistro({
           conversationId,
           tipo,
@@ -60,7 +64,12 @@ export async function executeTool(
       }
 
       case 'create_acuerdo': {
-        const { montoTotal, cuotasTotal, fechaPrimerPago, porcentajeHonorarios } = input;
+        const { montoTotal, cuotasTotal, fechaPrimerPago, porcentajeHonorarios } = input as {
+          montoTotal: number;
+          cuotasTotal: number;
+          fechaPrimerPago: string;
+          porcentajeHonorarios?: number;
+        };
 
         // Validate inputs
         if (montoTotal <= 0 || cuotasTotal <= 0) {
@@ -94,7 +103,11 @@ export async function executeTool(
       }
 
       case 'mark_cuota_pagada': {
-        const { acuerdoId, numeroCuota, fecha } = input;
+        const { acuerdoId, numeroCuota, fecha } = input as {
+          acuerdoId?: string;
+          numeroCuota: number;
+          fecha: string;
+        };
 
         if (!acuerdoId) {
           throw new Error('acuerdoId es requerido');
@@ -113,10 +126,18 @@ export async function executeTool(
           resultText = 'ℹ️ No hay acuerdos activos en esta causa.';
         } else {
           const acuerdoInfo = acuerdosActivos
-            .map(
-              (a: any) =>
-                `- Acuerdo $${a.montoTotal.toLocaleString('es-CL')}: ${a.cuotasPagadas}/${a.cuotasTotal} cuotas pagadas (próximo vencimiento: ${a.proximoVencimiento})`
-            )
+            .map((acuerdo) => {
+              // Cast inevitable: el template lee campos camelCase (montoTotal, cuotasPagadas,
+              // cuotasTotal, proximoVencimiento) que NO existen en AcuerdoRecord (snake_case).
+              // Se tipa estrecho sin corregir el desajuste para no cambiar comportamiento.
+              const a = acuerdo as unknown as {
+                montoTotal: number;
+                cuotasPagadas: number;
+                cuotasTotal: number;
+                proximoVencimiento: string;
+              };
+              return `- Acuerdo $${a.montoTotal.toLocaleString('es-CL')}: ${a.cuotasPagadas}/${a.cuotasTotal} cuotas pagadas (próximo vencimiento: ${a.proximoVencimiento})`;
+            })
             .join('\n');
           resultText = `Acuerdos activos:\n${acuerdoInfo}`;
         }
@@ -124,7 +145,10 @@ export async function executeTool(
       }
 
       case 'close_case': {
-        const { motivo_cierre, notas } = input;
+        const { motivo_cierre, notas } = input as {
+          motivo_cierre: 'pago_total' | 'desistimiento' | 'caducada';
+          notas?: string;
+        };
 
         await updateConversationMetadata(conversationId, {
           case_state: 'cerrada',
@@ -170,7 +194,7 @@ export async function executeTool(
  * Returns structured results to feed back to Claude.
  */
 export async function processToolUseBlocks(
-  toolUseBlocks: Array<{ id: string; name: string; input: Record<string, any> }>,
+  toolUseBlocks: Array<{ id: string; name: string; input: Record<string, unknown> }>,
   conversationId: string
 ): Promise<ToolResult[]> {
   const results = await Promise.all(

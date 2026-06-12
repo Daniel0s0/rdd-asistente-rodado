@@ -15,6 +15,48 @@ import {
 import { logger } from '@utils/logger';
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Supabase write builders (client is untyped — sin tipos generados de la DB,
+// .insert()/.update() infieren `never` como payload). Estos shapes estrechos
+// modelan exactamente las cadenas usadas en este archivo, sin `any`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface DbWriteError {
+  code?: string;
+  message: string;
+}
+
+interface DbSingleResult {
+  data: unknown;
+  error: DbWriteError | null;
+}
+
+interface DbManyResult {
+  data: unknown[] | null;
+  error: DbWriteError | null;
+}
+
+interface InsertableTable {
+  insert(values: Record<string, unknown>[]): {
+    select(): {
+      single(): PromiseLike<DbSingleResult>;
+    } & PromiseLike<DbManyResult>;
+  };
+}
+
+interface UpdatableTable {
+  update(values: Record<string, unknown>): {
+    eq(
+      column: string,
+      value: string
+    ): {
+      select(): {
+        single(): PromiseLike<DbSingleResult>;
+      };
+    };
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Conversation CRUD
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -42,7 +84,10 @@ export async function createConversation(
     metadata: {} as ConversationMetadata,
   };
 
-  const { data, error } = await (db.from('conversations') as any).insert([insert]).select().single();
+  const { data, error } = await (db.from('conversations') as unknown as InsertableTable)
+    .insert([insert])
+    .select()
+    .single();
 
   if (error) {
     // 23505 = unique_violation (Postgres); más robusto que string matching del mensaje
@@ -74,7 +119,10 @@ export async function createSimpleConversation(
     metadata: {} as ConversationMetadata,
   };
 
-  const { data, error } = await (db.from('conversations') as any).insert([insert]).select().single();
+  const { data, error } = await (db.from('conversations') as unknown as InsertableTable)
+    .insert([insert])
+    .select()
+    .single();
 
   if (error) {
     // 23505 = unique_violation (Postgres); más robusto que string matching del mensaje
@@ -121,14 +169,13 @@ export async function updateConversationMetadata(
 
   for (const key of Object.keys(updates)) {
     if (key !== 'id' && key !== 'created_at') {
-      updateObj[key] = (updates as any)[key];
+      updateObj[key] = updates[key as keyof Conversation];
     }
   }
 
   updateObj.updated_at = new Date().toISOString();
 
-  const { data, error } = await (db
-    .from('conversations') as any)
+  const { data, error } = await (db.from('conversations') as unknown as UpdatableTable)
     .update(updateObj)
     .eq('id', conversationId)
     .select()
@@ -153,8 +200,7 @@ export async function closeConversation(
 ): Promise<Conversation> {
   const db = getDb();
 
-  const { data, error } = await (db
-    .from('conversations') as any)
+  const { data, error } = await (db.from('conversations') as unknown as UpdatableTable)
     .update({ closed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
     .eq('id', conversationId)
     .select()
@@ -254,7 +300,10 @@ export async function createMessage(
     metadata: safeMetadata,
   };
 
-  const { data, error } = await (db.from('messages') as any).insert([insert]).select().single();
+  const { data, error } = await (db.from('messages') as unknown as InsertableTable)
+    .insert([insert])
+    .select()
+    .single();
 
   if (error) {
     if (error.message.includes('foreign key')) {
@@ -334,7 +383,10 @@ export async function createAuditLogEntry(
     metadata: safeMetadata,
   };
 
-  const { data, error } = await (db.from('audit_log') as any).insert([insert]).select().single();
+  const { data, error } = await (db.from('audit_log') as unknown as InsertableTable)
+    .insert([insert])
+    .select()
+    .single();
 
   if (error) {
     logger.error({ error: error.message, entityType, entityId, action }, 'createAuditLogEntry: database error');
@@ -382,7 +434,7 @@ export async function getAuditTrailForCase(causaId: string): Promise<AuditLogEnt
     return [];
   }
 
-  const conversationId = (convData as any).id;
+  const conversationId = (convData as { id: string }).id;
 
   const { data: msgData, error: msgError } = await db
     .from('messages')
@@ -394,7 +446,7 @@ export async function getAuditTrailForCase(causaId: string): Promise<AuditLogEnt
     throw msgError;
   }
 
-  const messageIds = ((msgData || []) as any[]).map((m) => m.id);
+  const messageIds = ((msgData || []) as Array<{ id: string }>).map((m) => m.id);
 
   const entityIds = [conversationId, ...messageIds];
 
@@ -472,7 +524,10 @@ export async function createAcuerdo(data: {
     estado: 'activo',
   };
 
-  const { data: result, error } = await (db.from('acuerdos') as any).insert([insert]).select().single();
+  const { data: result, error } = await (db.from('acuerdos') as unknown as InsertableTable)
+    .insert([insert])
+    .select()
+    .single();
 
   if (error) {
     logger.error({ error: error.message, conversationId: data.conversationId }, 'createAcuerdo: database error');
@@ -495,7 +550,9 @@ export async function createCuotas(acuerdoId: string, cuotas: Array<{ numero: nu
     estado: 'pendiente',
   }));
 
-  const { data: result, error } = await (db.from('cuotas') as any).insert(inserts).select();
+  const { data: result, error } = await (db.from('cuotas') as unknown as InsertableTable)
+    .insert(inserts)
+    .select();
 
   if (error) {
     logger.error({ error: error.message, acuerdoId }, 'createCuotas: database error');
@@ -525,7 +582,10 @@ export async function createRegistro(data: {
     notas: data.notas ?? null,
   };
 
-  const { data: result, error } = await (db.from('registros') as any).insert([insert]).select().single();
+  const { data: result, error } = await (db.from('registros') as unknown as InsertableTable)
+    .insert([insert])
+    .select()
+    .single();
 
   if (error) {
     logger.error({ error: error.message, conversationId: data.conversationId }, 'createRegistro: database error');
@@ -561,18 +621,17 @@ export async function markCuotaPagada(
   }
 
   const fechaPagoDate = new Date(fechaPago);
-  const fechaVencimientoDate = new Date((cuota as any).fecha_vencimiento);
+  const fechaVencimientoDate = new Date((cuota as CuotaRecord).fecha_vencimiento);
   const diffDays = Math.floor((fechaPagoDate.getTime() - fechaVencimientoDate.getTime()) / (1000 * 60 * 60 * 24));
 
   const newEstado = diffDays > 5 ? 'pagada_con_retraso' : 'pagada';
 
-  const { data: result, error: updateError } = await (db
-    .from('cuotas') as any)
+  const { data: result, error: updateError } = await (db.from('cuotas') as unknown as UpdatableTable)
     .update({
       fecha_pago: fechaPago,
       estado: newEstado,
     })
-    .eq('id', (cuota as any).id)
+    .eq('id', (cuota as CuotaRecord).id)
     .select()
     .single();
 
