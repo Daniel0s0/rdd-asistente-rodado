@@ -45,7 +45,8 @@ export async function createConversation(
   const { data, error } = await (db.from('conversations') as any).insert([insert]).select().single();
 
   if (error) {
-    if (error.message.includes('duplicate key')) {
+    // 23505 = unique_violation (Postgres); más robusto que string matching del mensaje
+    if (error.code === '23505' || error.message.includes('duplicate key')) {
       throw new Error(`Conversation for causa_id "${causaId}" already exists.`);
     }
     logger.error({ error: error.message, causaId }, 'createConversation: database error');
@@ -76,7 +77,8 @@ export async function createSimpleConversation(
   const { data, error } = await (db.from('conversations') as any).insert([insert]).select().single();
 
   if (error) {
-    if (error.message.includes('duplicate key')) {
+    // 23505 = unique_violation (Postgres); más robusto que string matching del mensaje
+    if (error.code === '23505' || error.message.includes('duplicate key')) {
       throw new Error(`Conversation for causa_id "${causaId}" already exists.`);
     }
     logger.error({ error: error.message, causaId }, 'createSimpleConversation: database error');
